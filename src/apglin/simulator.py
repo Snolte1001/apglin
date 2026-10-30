@@ -62,7 +62,7 @@ class SimulatedTransport(Transport):
         """Ein fremder Master sendet einen kompletten Frame."""
         chk = frame_checksum(frame_id, bytes(data), checksum)
         with self._lock:
-            self._bus_frame(protected_id(frame_id), bytes(data) + bytes([chk]), tx=False)
+            self._bus_frame(protected_id(frame_id), bytes(data) + bytes([chk]))
 
     def inject_events(self, raw: bytes) -> None:
         """Rohe CBUF2-Ereignisse einspeisen."""
@@ -132,7 +132,7 @@ class SimulatedTransport(Transport):
                 if not payload and frame_id_of(pid) in self.responders:
                     answer = self.responders[frame_id_of(pid)]
                     payload = answer + bytes([frame_checksum(frame_id_of(pid), answer)])
-                self._bus_frame(pid, payload, tx=True)
+                self._bus_frame(pid, payload)
             elif op in (c.Script.MARKER, c.Script.LED1, c.Script.LED2):
                 if len(s) < 2:
                     return
@@ -158,16 +158,16 @@ class SimulatedTransport(Transport):
             else:
                 s.clear()
 
-    def _bus_frame(self, pid: int, payload: bytes, tx: bool) -> None:
+    def _bus_frame(self, pid: int, payload: bytes) -> None:
         if not self.control_block[c.CB_LIN_FLAGS] & c.LIN_FLAG_RECEIVE:
             return
-        ticks = int((self._clock() - self._t0) / c.EVENT_TICK_S) & 0xFFFF
-        events = bytearray()
-        if tx:
-            events.append(c.Event.LIN_BREAK_TX)
-        events += bytes([c.Event.LIN_BREAK_RX, c.Event.TIME, ticks & 0xFF, ticks >> 8])
+        # Wie Firmware 0x2304: kein LIN_BREAK_TX, vor jedem Byte ein Zeitstempel.
+        ticks = int((self._clock() - self._t0) / c.EVENT_TICK_S)
+        events = bytearray([c.Event.LIN_BREAK_RX])
         for byte in bytes([pid]) + payload:
-            events += bytes([c.Event.DATA_BYTE, byte])
+            t = ticks & 0xFFFF
+            events += bytes([c.Event.TIME, t & 0xFF, t >> 8, c.Event.DATA_BYTE, byte])
+            ticks += 1
         self._emit_stream(bytes(events))
 
     def _emit_stream(self, events: bytes) -> None:

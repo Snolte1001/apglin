@@ -1,5 +1,7 @@
 """Hauptklasse ``LinAnalyzer``: Konfiguration, Senden, Empfangen."""
 
+import collections
+import dataclasses
 import logging
 import queue
 import threading
@@ -16,6 +18,8 @@ from .stream import StreamEvent, StreamParser
 from .transport import HidTransport, Transport
 
 log = logging.getLogger(__name__)
+
+SENT_MATCH_WINDOW_S = 2.0
 
 FrameListener = Callable[[LinFrame], None]
 EventListener = Callable[[StreamEvent], None]
@@ -58,6 +62,11 @@ class LinAnalyzer:
         self._event_listeners: List[EventListener] = []
         self.dropped_frames = 0
         self.protocol_errors = 0
+        # Eigene Sendungen (Zeitpunkt, PID, Daten inkl. Prüfsumme), um das
+        # Loopback-Echo als ``transmitted`` zu kennzeichnen. Die Firmware
+        # meldet kein „Break gesendet“.
+        self._sent: "collections.deque" = collections.deque()
+        self._sent_lock = threading.Lock()
 
         self._error: Optional[BaseException] = None
         self._running = True
@@ -155,8 +164,22 @@ class LinAnalyzer:
                     self._profile_cond.notify_all()
         self._dispatch(self._assembler.feed(events))
 
+    def _mark_own(self, frame: LinFrame) -> LinFrame:
+        raw = frame.data + (bytes([frame.checksum]) if frame.checksum is not None else b"")
+        now = time.monotonic()
+        with self._sent_lock:
+            while self._sent and now - self._sent[0][0] > SENT_MATCH_WINDOW_S:
+                self._sent.popleft()
+            for entry in self._sent:
+                if entry[1] == frame.pid and entry[2] == raw:
+                    self._sent.remove(entry)
+                    return dataclasses.replace(frame, transmitted=True)
+        return frame
+
     def _dispatch(self, frames: List[LinFrame]) -> None:
         for frame in frames:
+            if not frame.transmitted:
+                frame = self._mark_own(frame)
             try:
                 self._frames.put_nowait(frame)
             except queue.Full:
@@ -398,7 +421,12 @@ class LinAnalyzer:
 
         Für Fehlertests: falsche Parität oder Prüfsumme werden nicht korrigiert.
         """
-        script = protocol.script_lin_send(pid, bytes(payload)) + protocol.script_marker()
+        payload = bytes(payload)
+        script = protocol.script_lin_send(pid, payload) + protocol.script_marker()
+        if payload:
+            # Nur komplette Frames: beim reinen Header stammen die Daten vom Slave.
+            with self._sent_lock:
+                self._sent.append((time.monotonic(), pid & 0xFF, payload))
         self._run_script(script, wait, timeout)
 
     def request(self, frame_id: int, timeout: Optional[float] = None) -> LinFrame:

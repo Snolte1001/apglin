@@ -190,3 +190,11 @@ def test_configure_lin_uses_low_latency_flush(lin):
     assert cb.flush_on_count and cb.flush_on_time
     assert cb.flush_byte_count == 10
     assert cb.data[c.CB_FLUSH_INTERVAL] == round(10 / 0.409)
+
+
+def test_own_frame_marked_but_foreign_identical_frame_not(lin, sim):
+    lin.configure_lin(19200)
+    lin.send_frame(0x05, b"\x01\x02")
+    assert lin.receive(timeout=1.0).transmitted
+    sim.inject_frame(0x05, b"\x01\x02")
+    assert not lin.receive(timeout=1.0).transmitted

@@ -164,13 +164,26 @@ Frame-Aufbau wie in der DLL: Break `83` startet einen Frame, der folgende
 Zeitstempel gehört zu ihm, das erste `10`-Byte ist die PID, die weiteren
 sind Daten mit der Prüfsumme als letztem Byte. Der Frame endet mit dem
 nächsten Break, nach 9 Bytes, bei `82` oder nach einer Pause (DLL: 100 ms).
-Das Sync-Byte `0x55` erscheint nicht im Strom **[DLL]**; ob das für alle
-Firmwarestände gilt, ist an Hardware zu prüfen **[ANNAHME]**.
+Das Sync-Byte `0x55` erscheint nicht im Strom **[HW]**. Vor jedem Byte steht
+ein eigener Zeitstempel `13` **[HW]**.
 
 Eigene Sendungen kommen über die Loopback-Strecke als normale Frames zurück
-**[UG]**; die Java-Bibliothek wartet nach dem Senden bis zu 3 s auf genau
-dieses Echo **[DLL]**. Ob davor ein `84` (Break gesendet) kommt und
-`LinFrame.transmitted` damit zuverlässig ist, ist nicht bestätigt **[ANNAHME]**.
+**[UG] [HW]**. Ein `84` (Break gesendet) liefert Firmware `0x2304` dabei
+nicht **[HW]**. `apglin` kennzeichnet eigene Frames deshalb, indem es das
+Echo mit den zuletzt gesendeten Frames vergleicht (PID, Daten, Prüfsumme,
+höchstens 2 s alt). Der Marker `1C 77` kommt vor dem Echo des letzten Bytes
+an **[HW]**; „Skript fertig“ heißt also nicht „Echo vollständig“.
+
+Mitschnitt (Firmware `0x2304`, 19200 Bd, Loopback, ID `0x0C`) **[HW]**:
+
+```
+83  13 33 00 10 4C  13 36 00 10 11  13 37 00 10 04  13 39 00 10 00
+    13 3A 00 10 00  13 3B 00 10 00  13 3C 00 10 00  13 3E 00 10 C0
+    13 3F 00 10 00  13 40 00 1C 77  13 41 00 10 DD  13 41 00
+```
+
+Die Abstände der Zeitstempel (1–2 Ticks je Byte, ein Byte dauert bei
+19200 Bd 0,52 ms) passen zu 409 µs je Tick.
 
 Fehlerarten der Microchip-Software **[UG]**: Parität, Prüfsumme, „No Answer“
 (Header ohne Daten innerhalb des Bus-Timeouts) und Bus-Timeout. TX-Bit-,
@@ -181,17 +194,21 @@ implementiert.
 
 Erledigt (30.10.2026, APGDT001, Firmware `0x2304`, Windows):
 
-- Statusantwort und Firmwareversion lesen (`apglin info`) **[HW]**.
+- Statusantwort und Firmwareversion lesen (`apglin info`).
+- `configure_lin` (19200 Bd) mit Echo-Vergleich des Control Blocks.
+- Senden mit Loopback-Echo, PID `0x4C` und Prüfsumme `DD` (enhanced) wie in
+  den Mitschnitten Dritter.
+- Sync-Byte nicht im Strom, kein `84`, Zeitstempel vor jedem Byte, Marker
+  vor dem letzten Echo-Byte.
 
 Offen:
 
-1. `configure_lin` mit Echo-Vergleich.
-2. Senden ohne Bus, nur mit VBAT: `apglin send 0x0C 11 04 00 00 00 00 C0 00`
-   muss dank Loopback als Frame zurückkommen. Danach gegen einen zweiten
-   LIN-Knoten oder Logikanalysator prüfen.
-3. Empfang (`apglin monitor --raw`): kommt das Sync-Byte? kommt `84` vor dem
-   Echo? Zeitstempelauflösung 409 µs oder 409,6 µs?
-4. Master Request (`apglin request`) mit echtem Slave.
+1. Senden gegen einen zweiten LIN-Knoten oder Logikanalysator prüfen.
+2. Master Request (`apglin request`) ohne Slave (erwartet: „No Response“)
+   und mit echtem Slave.
+3. Andere Baudraten (`-b 9600`, `-b 10417`) und Autobaud mit fremdem Master.
+4. Mehrere Frames hintereinander (`send -n 20`), Flusskontrolle mit
+   40-Byte-Skriptpuffer.
 5. Format eines kompletten Slave-Profils für CBUF3 (`load_slave_profile`).
 
 ## Quellen
