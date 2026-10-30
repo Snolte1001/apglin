@@ -33,6 +33,9 @@ class SimulatedTransport(Transport):
         self.responders: Dict[int, bytes] = {}
         self.leds = {1: 0, 2: 0}
         self.written: List[bytes] = []
+        # Ereignisse, die das Gerät noch aus der Zeit vor einem Warmstart
+        # nachliefert (z. B. Zeitüberläufe, während niemand gelesen hat)
+        self.stale_events = b""
         self.closed = False
         self._script = bytearray()
         self._packet_id = 0
@@ -101,6 +104,9 @@ class SimulatedTransport(Transport):
             elif sub == c.Control.WARM_RESET:
                 self._apply_control_block()
                 self._t0 = self._clock()
+                if self.stale_events:
+                    self._emit_stream(self.stale_events)
+                    self.stale_events = b""
             elif sub == c.Control.COMM_CLEAR:
                 for i in (c.SB_ERROR_0, c.SB_ERROR_1, c.SB_ERROR_2):
                     self.status_block[i] = 0

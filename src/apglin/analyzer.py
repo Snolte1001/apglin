@@ -67,6 +67,11 @@ class LinAnalyzer:
         # meldet kein „Break gesendet“.
         self._sent: "collections.deque" = collections.deque()
         self._sent_lock = threading.Lock()
+        # Nach einem Reset alte Ereignisse verwerfen, bis die nächste
+        # Statusantwort kommt (Gerät puffert z. B. Zeitüberläufe, solange
+        # niemand liest).
+        self._discard_stream = False
+        self.discarded_stream_bytes = 0
 
         self._error: Optional[BaseException] = None
         self._running = True
@@ -144,8 +149,16 @@ class LinAnalyzer:
             elif tag == c.Group.CBUF_STATUS:
                 self._buffers = BufferStatus.from_bytes(payload)
                 status_seen = True
+                if self._discard_stream:
+                    self._discard_stream = False
+                    self._parser.reset()
+                    self._assembler.reset_time()
             elif tag == c.Group.CBUF2_DATA:
-                self._handle_stream(payload)
+                if self._discard_stream:
+                    self.discarded_stream_bytes += len(payload)
+                    log.debug("Alte Ereignisse verworfen: %s", payload.hex(" "))
+                else:
+                    self._handle_stream(payload)
         if status_seen:
             self._status_event.set()
 
@@ -286,8 +299,9 @@ class LinAnalyzer:
 
     def warm_reset(self) -> DeviceStatus:
         """Setzt die Kommunikation zurück; die Gerätezeit beginnt wieder bei 0."""
+        self._discard_stream = True
         self._control(c.Control.WARM_RESET)
-        self._reset_time_base()
+        self._write(protocol.clear_cbuf(2))
         return self.request_status()
 
     def clear_errors(self) -> DeviceStatus:
@@ -295,9 +309,10 @@ class LinAnalyzer:
         return self.request_status()
 
     def comm_reset(self) -> DeviceStatus:
+        self._discard_stream = True
         self._control(c.Control.COMM_RESET)
         self._control(c.Control.WARM_RESET)
-        self._reset_time_base()
+        self._write(protocol.clear_cbuf(2))
         return self.request_status()
 
     def save_configuration(self) -> None:
@@ -305,21 +320,20 @@ class LinAnalyzer:
         self._control(c.Control.CONTROL_BLOCK_TO_EEPROM)
         self.request_status()
 
-    def _reset_time_base(self, drop_partial: bool = True) -> None:
+    def _reset_time_base(self) -> None:
         with self._rx_lock:
             self._assembler.reset_time()
-            if drop_partial:
-                self._parser.reset()
 
     def write_control_block(self, block: ControlBlock, *, reset: bool = False,
                             verify: bool = True) -> DeviceStatus:
         """Schreibt die Konfiguration; ``reset`` umrahmt sie mit Kalt-/Warmstart."""
         if reset:
+            self._discard_stream = True
             self._control(c.Control.COLD_RESET)
         self._write(protocol.write_control_block(bytes(block)))
         if reset:
             self._control(c.Control.WARM_RESET)
-            self._reset_time_base()
+            self._write(protocol.clear_cbuf(2))
         else:
             self._control(c.Control.COMM_CLEAR)
         status = self.request_status()
@@ -547,4 +561,4 @@ class LinAnalyzer:
     def reset_timer(self) -> None:
         """Setzt die Gerätezeit (Frame-Zeitstempel) auf 0."""
         self._run_script(protocol.script_event_timer_reset(), False, None)
-        self._reset_time_base(drop_partial=False)
+        self._reset_time_base()

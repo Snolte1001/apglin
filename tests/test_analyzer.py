@@ -30,7 +30,8 @@ def test_status(lin):
 def test_configure_lin_sequence(lin, sim):
     lin.configure_lin(19200)
     cmds = [r[:2] for r in sim.written]
-    assert cmds[:4] == [b"\x01\x00", sim.written[1][:2], b"\x01\x01", b"\x01\x02"]
+    # Kaltstart, Control Block, Warmstart, CBUF2 leeren, Statusanfrage
+    assert cmds[:5] == [b"\x01\x00", sim.written[1][:2], b"\x01\x01", b"\x09\x00", b"\x01\x02"]
     assert sim.written[1][0] == c.Command.WRITE_CONTROL_BLOCK
     st = lin.request_status()
     assert st.comm_mode == c.CommMode.LIN
@@ -198,3 +199,22 @@ def test_own_frame_marked_but_foreign_identical_frame_not(lin, sim):
     assert lin.receive(timeout=1.0).transmitted
     sim.inject_frame(0x05, b"\x01\x02")
     assert not lin.receive(timeout=1.0).transmitted
+
+
+def test_stale_events_before_configure_are_discarded(lin, sim):
+    # Hardwarebefund: nach Minuten im LIN-Modus ohne Leser lieferte das Gerät
+    # vier Zeitüberläufe nach, der erste Frame stand dann bei 107,2 s.
+    sim.stale_events = bytes([c.Event.TIME_ROLLOVER] * 4)
+    lin.configure_lin(19200)
+    lin.send_frame(0x0C, bytes.fromhex("110400000000C000"))
+    frame = lin.receive(timeout=1.0)
+    assert frame.timestamp < 1.0
+    assert lin.discarded_stream_bytes == 4
+
+
+def test_frame_str_marks_direction(lin, sim):
+    lin.configure_lin(19200)
+    lin.send_frame(0x05, b"\x01")
+    assert " TX ID=0x05" in str(lin.receive(timeout=1.0))
+    sim.inject_frame(0x06, b"\x01")
+    assert " RX ID=0x06" in str(lin.receive(timeout=1.0))

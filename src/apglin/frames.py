@@ -46,7 +46,8 @@ class LinFrame:
         kind = f" {self.checksum_type.value}" if self.checksum_type else ""
         err = "" if self.ok else f" [{self.errors!r}]"
         data = self.data.hex(" ").upper() or "-"
-        return f"{ts}ID=0x{self.frame_id:02X} PID=0x{self.pid:02X} [{len(self.data)}] {data}{chk}{kind}{err}"
+        tx = "TX " if self.transmitted else "RX "
+        return f"{ts}{tx}ID=0x{self.frame_id:02X} PID=0x{self.pid:02X} [{len(self.data)}] {data}{chk}{kind}{err}"
 
 
 class FrameAssembler:

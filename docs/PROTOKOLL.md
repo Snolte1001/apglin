@@ -102,6 +102,7 @@ Bedeutung unbekannt und werden unverändert übernommen.
 
 Ablauf beim Umschalten auf LIN **[DLL]**: Kaltstart → Control Block →
 Warmstart → Statusanfrage, die 24 Byte des Echos müssen gleich sein.
+`apglin` leert vor der Statusanfrage zusätzlich CBUF2 (siehe Ereignisstrom).
 
 Die Microchip-Demo zu TB3180 stellt danach Flush auf 10 Byte / 10 ms
 (`Set_Buffer_Flush_Parameters(true, true, 10, 10)`), damit Frames ohne
@@ -182,8 +183,14 @@ Mitschnitt (Firmware `0x2304`, 19200 Bd, Loopback, ID `0x0C`) **[HW]**:
     13 3F 00 10 00  13 40 00 1C 77  13 41 00 10 DD  13 41 00
 ```
 
-Die Abstände der Zeitstempel (1–2 Ticks je Byte, ein Byte dauert bei
-19200 Bd 0,52 ms) passen zu 409 µs je Tick.
+Die Abstände der Zeitstempel passen zu 409 µs je Tick: 1–2 Ticks je Byte
+bei 19200 Bd (0,52 ms je Byte), etwa 2,5 Ticks bei 9600 Bd (1,04 ms) **[HW]**.
+
+Bleibt das Gerät im LIN-Modus, ohne dass jemand liest, puffert es
+Ereignisse wie Zeitüberläufe `14` und liefert sie beim nächsten Öffnen nach.
+Beobachtet: erster Frame bei 107,2 s = 4 × 26,8 s statt 0,02 s **[HW]**.
+`apglin` leert deshalb nach dem Warmstart CBUF2 (`09`) und verwirft alle
+Ereignisse bis zur nächsten Statusantwort.
 
 Fehlerarten der Microchip-Software **[UG]**: Parität, Prüfsumme, „No Answer“
 (Header ohne Daten innerhalb des Bus-Timeouts) und Bus-Timeout. TX-Bit-,
@@ -200,15 +207,19 @@ Erledigt (30.10.2026, APGDT001, Firmware `0x2304`, Windows):
   den Mitschnitten Dritter.
 - Sync-Byte nicht im Strom, kein `84`, Zeitstempel vor jedem Byte, Marker
   vor dem letzten Echo-Byte.
+- 20 Frames hintereinander (`send -n 20`) mit 40-Byte-Skriptpuffer, Abstand
+  16–24 ms.
+- Master Request ohne Slave (`request 0x21`): Echo der PID `0x61`, keine
+  Daten → `NO_RESPONSE`.
+- 9600 Bd, Diagnose-ID `0x3C` mit classic-Prüfsumme `DB`.
 
 Offen:
 
-1. Senden gegen einen zweiten LIN-Knoten oder Logikanalysator prüfen.
-2. Master Request (`apglin request`) ohne Slave (erwartet: „No Response“)
-   und mit echtem Slave.
-3. Andere Baudraten (`-b 9600`, `-b 10417`) und Autobaud mit fremdem Master.
-4. Mehrere Frames hintereinander (`send -n 20`), Flusskontrolle mit
-   40-Byte-Skriptpuffer.
+1. Prüfen, dass der Zeitstempel nach längerer Pause im LIN-Modus wieder bei
+   ~0,02 s beginnt (Verwerfen alter Ereignisse).
+2. Senden gegen einen zweiten LIN-Knoten oder Logikanalysator prüfen.
+3. Master Request mit echtem Slave.
+4. Autobaud und Mitschnitt mit fremdem Master (`monitor --autobaud`).
 5. Format eines kompletten Slave-Profils für CBUF3 (`load_slave_profile`).
 
 ## Quellen
