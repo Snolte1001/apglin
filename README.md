@@ -108,7 +108,11 @@ Ein vollständiges Beispiel mit echtem Slave (Audi-Bedienteil
 8W1 919 616, Drehen/Drücken/Kippen, Tastenbeleuchtung):
 [`examples/audi_8w1919616.py`](examples/audi_8w1919616.py), Belegung in
 [docs/AUDI_8W1919616.md](docs/AUDI_8W1919616.md), LDF in
-[docs/AUDI_8W1919616.ldf](docs/AUDI_8W1919616.ldf).
+[docs/AUDI_8W1919616.ldf](docs/AUDI_8W1919616.ldf). Ebenso das Tastenfeld
+8W1 919 616 B (Ziffern 1–8, ein Schalter, kapazitive Position):
+[`examples/audi_8w1919616b.py`](examples/audi_8w1919616b.py),
+[docs/AUDI_8W1919616B.md](docs/AUDI_8W1919616B.md),
+[docs/AUDI_8W1919616B.ldf](docs/AUDI_8W1919616B.ldf).
 
 Mehrere Header hintereinander: jeweils `send_header(..., wait=True)` und
 eine Pause, nie nachholen, sonst überschreibt der nächste Header die

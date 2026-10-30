@@ -325,6 +325,10 @@ Erledigt (30.10.2026, gleiches Gerät, ein fremder Slave am Bus, Master-Pull-up)
 - Der Slave ist ein Audi-Bedienteil 8W1 919 616; Belegung seiner Frames
   (Tasten `0x10`, Beleuchtung `0x01`) in [AUDI_8W1919616.md](AUDI_8W1919616.md),
   31 318 Frames mit 30 ms Abstand ohne Fehler.
+- Zweiter fremder Slave: Audi-Tastenfeld 8W1 919 616 B (Ziffern 1–8,
+  sechs Antwort-IDs, Beleuchtung `0x01`), siehe
+  [AUDI_8W1919616B.md](AUDI_8W1919616B.md); Mitschnitt
+  `tests/recordings/tastenfeld_basics.txt`.
 - Senden an einen fremden Knoten: Master-Frames werden angenommen und
   ausgewertet (Beleuchtung), fehlerhafte Frames meldet der Slave per
   Response_Error. Damit sind Break, Sync, PID, Daten und enhanced-Prüfsumme

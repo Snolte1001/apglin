@@ -67,3 +67,49 @@ def test_ldfparser_decodes_captured_frames_like_decoder():
             assert (signals["BT_Kippen_links"] == "betaetigt") == state.tilt_left
             assert (signals["BT_Kippen_rechts"] == "betaetigt") == state.tilt_right
     assert ldf.get_unconditional_frame("BT_Beleuchtung_Frame").encode({"BT_Beleuchtung": 100}) == b"\x64"
+
+
+# --- Tastenfeld 8W1 919 616 B ---------------------------------------------------
+
+LDF_B = ROOT / "docs" / "AUDI_8W1919616B.ldf"
+import audi_8w1919616b as pad  # noqa: E402
+from test_audi_8w1919616b import ROWS as PAD_ROWS  # noqa: E402
+
+
+def test_ldf_b_node_attributes_and_frames():
+    text = LDF_B.read_text(encoding="utf-8")
+    assert "configured_NAD = 0x60;" in text
+    assert "product_id = 0x0049, 0x3002, 0x00;" in text
+    assert "response_error = TF_Response_Error;" in text
+    for name, fid, length in (("TF_Beleuchtung_Frame", pad.ILLUMINATION_ID, 1), ("TF_Status", pad.STATUS_ID, 2),
+                              ("TF_Staerke_A", 0x2A, 8), ("TF_Staerke_B", 0x2B, 8), ("TF_Roh_A", 0x2C, 8),
+                              ("TF_Roh_B", 0x2D, 8), ("TF_Tasten", pad.KEYS_ID, 8)):
+        assert re.search(rf"{name}: 0x{fid:02X}, \w+, {length} \{{", text), name
+
+
+def test_ldfparser_b_matches_decoder_on_captured_frames():
+    ldfparser = pytest.importorskip("ldfparser")
+    ldf = ldfparser.parse_ldf(str(LDF_B), encoding="utf-8")
+    status_f = ldf.get_unconditional_frame("TF_Status")
+    keys_f = ldf.get_unconditional_frame("TF_Tasten")
+    words_f = {0x2A: ("TF_Staerke_A", ("W0", "T2", "T3", "T4"), "TF_Staerke", True),
+               0x2B: ("TF_Staerke_B", ("T5", "T6", "T7", "T8"), "TF_Staerke", True),
+               0x2C: ("TF_Roh_A", ("1", "2", "3", "4"), "TF_Roh", False),
+               0x2D: ("TF_Roh_B", ("5", "6", "7", "8"), "TF_Roh", False)}
+    for _, fid, data, _ in PAD_ROWS:
+        if fid == pad.STATUS_ID:
+            s, sig = pad.decode_status(data), status_f.decode(data)
+            assert sig["TF_Status_Maske"] == s.mask and sig["TF_Status_Wert"] == s.value
+            assert (sig["TF_Schalter"] == "ja") == s.switch
+        elif fid == pad.KEYS_ID:
+            sig = keys_f.decode(data)
+            number = sig["TF_Tasten_Nummer"]
+            assert sig["TF_Tasten_Maske"] == data[0]
+            assert (0 if number == "keine Taste" else number) == data[1]
+        elif fid in words_f:
+            name, keys, prefix, signed = words_f[fid]
+            sig = ldf.get_unconditional_frame(name).decode(data)
+            words = [sig[f"{prefix}_{k}_H"] * 256 + sig[f"{prefix}_{k}_L"] for k in keys]
+            if signed:
+                words = [w - 0x10000 if w & 0x8000 else w for w in words]
+            assert tuple(words) == pad.decode_words(data, signed)

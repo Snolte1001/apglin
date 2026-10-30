@@ -176,3 +176,22 @@ def test_slave_audi_illumination_response_error():
         first, second = r[key]
         assert first.data == b"\x00\x10" and first.ok, key
         assert second.data == b"\x00\x00", key
+
+
+# --- Tastenfeld 8W1 919 616 B -------------------------------------------------
+
+def test_tastenfeld_basics():
+    r = replay("tastenfeld_basics")
+    assert r["awake"].ok and r["awake"].data == b"\x00\x00"
+    frames = r["frames"]
+    assert {i: len(f.data) for i, f in frames.items()} == {0x20: 2, 0x2A: 8, 0x2B: 8, 0x2C: 8, 0x2D: 8, 0x2E: 8}
+    assert all(f.ok and f.checksum_type is ChecksumType.ENHANCED for f in frames.values())
+    assert frames[0x2E].data == bytes(8)
+    assert r["unused"].errors == FrameError.NO_RESPONSE
+    # Read by Identifier: NAD 0x60, Supplier 0x0049, Function 0x3002, Variant 0
+    assert r["product_id"].data == bytes.fromhex("6006F24900023000")
+    for key in ("valid", "valid_again"):
+        assert [f.data for f in r[key]] == [b"\x00\x00", b"\x00\x00"], key
+    # Response_Error: Byte 1 Bit 6 von 0x20, genau einmal
+    for key in ("bad_checksum", "too_long"):
+        assert [f.data for f in r[key]] == [b"\x00\x40", b"\x00\x00"], key

@@ -1,0 +1,248 @@
+/*
+ * Audi 8W1 919 616 B, Tastenfeld 1-8 mit Beleuchtung: ein mechanischer Schalter
+ * für das ganze Feld, die Ziffer wird kapazitiv an der Fingerposition erkannt
+ *
+ * Nicht von Audi: aus Messungen am 30.10.2026 mit apglin und einem APGDT001
+ * als Master rekonstruiert, siehe docs/AUDI_8W1919616B.md. Namen frei gewählt.
+ *
+ * Gemessen: Baudrate, Frame-IDs, Längen, Prüfsummen (enhanced), Signallage,
+ * Response_Error, NAD und Product ID (Read by Identifier).
+ * Angenommen (LIN-2.1-Standardwerte, nicht gemessen): P2_min, ST_min,
+ * N_As_timeout, N_Cr_timeout, Zeitbasis, Jitter, Zykluszeiten und
+ * Startwerte der Signale.
+ *
+ * Die 16-Bit-Werte in 0x2A-0x2D stehen MSB zuerst (Big Endian). LIN-Signale
+ * sind LSB zuerst, deshalb je Wert zwei 8-Bit-Signale _H (Byte 2n) und _L
+ * (Byte 2n+1): Wert = _H * 256 + _L, bei TF_Staerke mit Vorzeichen.
+ */
+
+LIN_description_file;
+LIN_protocol_version = "2.1";
+LIN_language_version = "2.1";
+LIN_speed = 19.2 kbps;
+
+Nodes {
+  Master: Master, 5 ms, 0.1 ms;
+  Slaves: TF;
+}
+
+Signals {
+  TF_Beleuchtung: 8, 0, Master, TF;
+  TF_Status_Maske: 8, 0, TF, Master;
+  TF_Status_Wert: 4, 0, TF, Master;
+  TF_Schalter: 1, 0, TF, Master;
+  TF_Response_Error: 1, 0, TF, Master;
+  TF_Staerke_W0_H: 8, 0, TF, Master;
+  TF_Staerke_W0_L: 8, 0, TF, Master;
+  TF_Staerke_T2_H: 8, 0, TF, Master;
+  TF_Staerke_T2_L: 8, 0, TF, Master;
+  TF_Staerke_T3_H: 8, 0, TF, Master;
+  TF_Staerke_T3_L: 8, 0, TF, Master;
+  TF_Staerke_T4_H: 8, 0, TF, Master;
+  TF_Staerke_T4_L: 8, 0, TF, Master;
+  TF_Staerke_T5_H: 8, 0, TF, Master;
+  TF_Staerke_T5_L: 8, 0, TF, Master;
+  TF_Staerke_T6_H: 8, 0, TF, Master;
+  TF_Staerke_T6_L: 8, 0, TF, Master;
+  TF_Staerke_T7_H: 8, 0, TF, Master;
+  TF_Staerke_T7_L: 8, 0, TF, Master;
+  TF_Staerke_T8_H: 8, 0, TF, Master;
+  TF_Staerke_T8_L: 8, 0, TF, Master;
+  TF_Roh_1_H: 8, 0, TF, Master;
+  TF_Roh_1_L: 8, 0, TF, Master;
+  TF_Roh_2_H: 8, 0, TF, Master;
+  TF_Roh_2_L: 8, 0, TF, Master;
+  TF_Roh_3_H: 8, 0, TF, Master;
+  TF_Roh_3_L: 8, 0, TF, Master;
+  TF_Roh_4_H: 8, 0, TF, Master;
+  TF_Roh_4_L: 8, 0, TF, Master;
+  TF_Roh_5_H: 8, 0, TF, Master;
+  TF_Roh_5_L: 8, 0, TF, Master;
+  TF_Roh_6_H: 8, 0, TF, Master;
+  TF_Roh_6_L: 8, 0, TF, Master;
+  TF_Roh_7_H: 8, 0, TF, Master;
+  TF_Roh_7_L: 8, 0, TF, Master;
+  TF_Roh_8_H: 8, 0, TF, Master;
+  TF_Roh_8_L: 8, 0, TF, Master;
+  TF_Tasten_Maske: 8, 0, TF, Master;
+  TF_Tasten_Nummer: 8, 0, TF, Master;
+}
+
+Diagnostic_signals {
+  MasterReqB0: 8, 0;
+  MasterReqB1: 8, 0;
+  MasterReqB2: 8, 0;
+  MasterReqB3: 8, 0;
+  MasterReqB4: 8, 0;
+  MasterReqB5: 8, 0;
+  MasterReqB6: 8, 0;
+  MasterReqB7: 8, 0;
+  SlaveRespB0: 8, 0;
+  SlaveRespB1: 8, 0;
+  SlaveRespB2: 8, 0;
+  SlaveRespB3: 8, 0;
+  SlaveRespB4: 8, 0;
+  SlaveRespB5: 8, 0;
+  SlaveRespB6: 8, 0;
+  SlaveRespB7: 8, 0;
+}
+
+Frames {
+  /* Helligkeit in Prozent; das TF behält den letzten Wert */
+  TF_Beleuchtung_Frame: 0x01, Master, 1 {
+    TF_Beleuchtung, 0;
+  }
+  /* unentprellt, wechselt fast jede Antwort zwischen Fingerposition (Maske, Wert = Nummer)
+     und Maske 0 (Wert = Annäherungsstufe, Deutung); TF_Schalter = mechanischer Schalter
+     des ganzen Felds; Bit 13 und 15 nie gesehen */
+  TF_Status: 0x20, TF, 2 {
+    TF_Status_Maske, 0;
+    TF_Status_Wert, 8;
+    TF_Schalter, 12;
+    TF_Response_Error, 14;
+  }
+  /* Big Endian, mit Vorzeichen; W0 = Rauschen bzw. bei Druck Maske/Nummer, T2-T4 Signalstärke */
+  TF_Staerke_A: 0x2A, TF, 8 {
+    TF_Staerke_W0_H, 0;
+    TF_Staerke_W0_L, 8;
+    TF_Staerke_T2_H, 16;
+    TF_Staerke_T2_L, 24;
+    TF_Staerke_T3_H, 32;
+    TF_Staerke_T3_L, 40;
+    TF_Staerke_T4_H, 48;
+    TF_Staerke_T4_L, 56;
+  }
+  /* Big Endian, mit Vorzeichen; Signalstärke Taste 5-8 */
+  TF_Staerke_B: 0x2B, TF, 8 {
+    TF_Staerke_T5_H, 0;
+    TF_Staerke_T5_L, 8;
+    TF_Staerke_T6_H, 16;
+    TF_Staerke_T6_L, 24;
+    TF_Staerke_T7_H, 32;
+    TF_Staerke_T7_L, 40;
+    TF_Staerke_T8_H, 48;
+    TF_Staerke_T8_L, 56;
+  }
+  /* Big Endian; 4 Werte um 450-580, reagieren nicht auf Tasten (Grundlinie?) */
+  TF_Roh_A: 0x2C, TF, 8 {
+    TF_Roh_1_H, 0;
+    TF_Roh_1_L, 8;
+    TF_Roh_2_H, 16;
+    TF_Roh_2_L, 24;
+    TF_Roh_3_H, 32;
+    TF_Roh_3_L, 40;
+    TF_Roh_4_H, 48;
+    TF_Roh_4_L, 56;
+  }
+  /* Big Endian; 4 Werte um 440-620, reagieren nicht auf Tasten (Grundlinie?) */
+  TF_Roh_B: 0x2D, TF, 8 {
+    TF_Roh_5_H, 0;
+    TF_Roh_5_L, 8;
+    TF_Roh_6_H, 16;
+    TF_Roh_6_L, 24;
+    TF_Roh_7_H, 32;
+    TF_Roh_7_L, 40;
+    TF_Roh_8_H, 48;
+    TF_Roh_8_L, 56;
+  }
+  /* entprellt berührte Taste(n), kapazitiv: Bitmaske (Bit n-1 = Taste n) und Nummer;
+     beim Rutschen kurz zwei Bits; Drücken nur über TF_Schalter; Byte 2-7 immer 0 */
+  TF_Tasten: 0x2E, TF, 8 {
+    TF_Tasten_Maske, 0;
+    TF_Tasten_Nummer, 8;
+  }
+}
+
+Diagnostic_frames {
+  MasterReq: 0x3C {
+    MasterReqB0, 0;
+    MasterReqB1, 8;
+    MasterReqB2, 16;
+    MasterReqB3, 24;
+    MasterReqB4, 32;
+    MasterReqB5, 40;
+    MasterReqB6, 48;
+    MasterReqB7, 56;
+  }
+  SlaveResp: 0x3D {
+    SlaveRespB0, 0;
+    SlaveRespB1, 8;
+    SlaveRespB2, 16;
+    SlaveRespB3, 24;
+    SlaveRespB4, 32;
+    SlaveRespB5, 40;
+    SlaveRespB6, 48;
+    SlaveRespB7, 56;
+  }
+}
+
+Node_attributes {
+  TF {
+    LIN_protocol = "2.1";
+    configured_NAD = 0x60;
+    initial_NAD = 0x60;
+    /* Read by Identifier 0: Supplier 0x0049, Function 0x3002, Variant 0x00 */
+    product_id = 0x0049, 0x3002, 0x00;
+    response_error = TF_Response_Error;
+    P2_min = 50 ms;
+    ST_min = 0 ms;
+    N_As_timeout = 1000 ms;
+    N_Cr_timeout = 1000 ms;
+    configurable_frames {
+      TF_Beleuchtung_Frame;
+      TF_Status;
+      TF_Staerke_A;
+      TF_Staerke_B;
+      TF_Roh_A;
+      TF_Roh_B;
+      TF_Tasten;
+    }
+  }
+}
+
+Schedule_tables {
+  /* gemessen funktionierend: 0x20 etwa alle 55 ms, die übrigen alle ~280 ms */
+  Normal {
+    TF_Beleuchtung_Frame delay 10 ms;
+    TF_Tasten delay 20 ms;
+    TF_Status delay 20 ms;
+  }
+  Sensoren {
+    TF_Status delay 20 ms;
+    TF_Staerke_A delay 20 ms;
+    TF_Staerke_B delay 20 ms;
+    TF_Roh_A delay 20 ms;
+    TF_Roh_B delay 20 ms;
+    TF_Tasten delay 20 ms;
+  }
+  Diagnose {
+    MasterReq delay 20 ms;
+    SlaveResp delay 20 ms;
+  }
+}
+
+Signal_encoding_types {
+  Enc_Helligkeit {
+    physical_value, 0, 100, 1, 0, "%";
+    physical_value, 101, 255, 0, 100, "%";
+  }
+  Enc_Tastennummer {
+    logical_value, 0, "keine Taste";
+    physical_value, 1, 8, 1, 0, "Taste";
+  }
+  Enc_Bit {
+    logical_value, 0, "nein";
+    logical_value, 1, "ja";
+  }
+  Enc_Response_Error {
+    logical_value, 0, "kein Fehler";
+    logical_value, 1, "fehlerhaften Frame empfangen";
+  }
+}
+
+Signal_representation {
+  Enc_Helligkeit: TF_Beleuchtung;
+  Enc_Tastennummer: TF_Tasten_Nummer;
+  Enc_Bit: TF_Schalter;
+  Enc_Response_Error: TF_Response_Error;
+}

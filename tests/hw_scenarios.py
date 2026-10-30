@@ -202,6 +202,36 @@ def slave_audi_illumination(lin, live=False):
     return result
 
 
+TASTENFELD_IDS = (0x20, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E)
+
+
+@scenario
+def tastenfeld_basics(lin, live=False):
+    """Tastenfeld 8W1 919 616 B (Tasten 1-8): Frames, Kennung, Beleuchtung, Response_Error."""
+    lin.configure_lin(19200)
+    pid = protected_id(0x01)
+
+    def key_status():
+        return lin.request(0x20, timeout=0.3, retries=1)
+
+    result = {"awake": key_status()}
+    result["frames"] = {i: lin.request(i, timeout=0.3) for i in TASTENFELD_IDS}
+    result["unused"] = lin.request(0x10, timeout=0.3)
+    lin.send_frame(0x3C, bytes([0x7F, 0x06, 0xB2, 0x00, 0xFF, 0x7F, 0xFF, 0xFF]),
+                   ChecksumType.CLASSIC, wait=True)
+    time.sleep(0.02)
+    result["product_id"] = lin.request(0x3D, timeout=0.3, retries=1)
+    for name, payload, raw in (("valid", b"\x64", False), ("bad_checksum", b"\x64\x00", True),
+                               ("too_long", b"\x64\x9a\x00", True), ("valid_again", b"\x64", False)):
+        if raw:
+            lin.send_raw(pid, payload, wait=True)
+        else:
+            lin.send_frame(0x01, payload, ChecksumType.ENHANCED, wait=True)
+        time.sleep(0.02)
+        result[name] = (key_status(), key_status())
+    return result
+
+
 def record(names):
     from apglin.recording import RecordingTransport
     from apglin.transport import HidTransport
@@ -217,7 +247,9 @@ def record(names):
             time.sleep(0.2)
         finally:
             lin.close()
-        bus = "Slave am Bus (ID 0x10)" if name.startswith("slave_") else "kein weiterer Busteilnehmer"
+        bus = ("Slave am Bus (Audi-Bedienteil 8W1 919 616, ID 0x10)" if name.startswith("slave_")
+               else "Slave am Bus (Audi-Tastenfeld 8W1 919 616 B)" if name.startswith("tastenfeld_")
+               else "kein weiterer Busteilnehmer")
         transport.save(RECORDINGS / f"{name}.txt",
                        f"{name}: APGDT001, Firmware {firmware}, VBAT, {bus}\n"
                        f"aufgenommen {datetime.date.today().isoformat()} mit tests/hw_scenarios.py")
