@@ -18,7 +18,7 @@ from pathlib import Path
 
 from apglin import ChecksumType, LinAnalyzer
 from apglin import protocol
-from apglin.lin import protected_id
+from apglin.lin import frame_checksum, protected_id
 
 RECORDINGS = Path(__file__).with_name("recordings")
 SCENARIOS = {}
@@ -168,6 +168,38 @@ def slave_collision(lin, live=False):
     lin.enable_slave_profile(False)
     return {"awake": awake, "collision": collision, "events": collision_events,
             "own": own, "status": lin.request_status()}
+
+
+@scenario
+def slave_audi_illumination(lin, live=False):
+    """Beleuchtung über ID 0x01 (1 Byte, Prozent) und Response_Error (Bit 4 in 0x10)."""
+    lin.configure_lin(19200)
+    pid = protected_id(0x01)
+
+    def knob():
+        return lin.request(SLAVE_ID, timeout=0.3, retries=1)
+
+    def frame(payload, raw=False):
+        if raw:
+            lin.send_raw(pid, payload, wait=True)
+        else:
+            lin.send_frame(0x01, payload, ChecksumType.ENHANCED, wait=True)
+        time.sleep(0.02)
+
+    result = {"awake": knob()}
+    for name, payload, raw in (
+        ("valid", b"\x32", False),
+        ("bad_checksum", b"\x64\x00", True),
+        ("too_long", b"\x64\x9a\x00", True),
+        ("classic", bytes([0x64, frame_checksum(0x01, b"\x64", ChecksumType.CLASSIC)]), True),
+        ("valid_100", b"\x64", False),
+    ):
+        frame(payload, raw)
+        result[name] = (knob(), knob())
+    lin.send_header(0x01, wait=True)
+    time.sleep(0.02)
+    result["header_only"] = (knob(), knob())
+    return result
 
 
 def record(names):

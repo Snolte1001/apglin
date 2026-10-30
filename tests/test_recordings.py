@@ -163,3 +163,16 @@ def test_slave_collision_with_own_profile():
     assert tags == [c.Event.LIN_BREAK_RX, c.Event.MARKER, c.Event.DATA_BYTE, c.Event.LIN_BREAK_RX]
     assert not r["status"].has_error
     assert r["own"].ok and r["own"].data == b"\x01"
+
+
+def test_slave_audi_illumination_response_error():
+    r = replay("slave_audi_illumination")
+    assert r["awake"].ok
+    # gültiger 1-Byte-Frame an 0x01: kein Fehler
+    for key in ("valid", "valid_100", "header_only"):
+        assert [f.data for f in r[key]] == [b"\x00\x00", b"\x00\x00"], key
+    # falsche Prüfsumme, zu lang, classic: Bit 4 (Response_Error) genau einmal
+    for key in ("bad_checksum", "too_long", "classic"):
+        first, second = r[key]
+        assert first.data == b"\x00\x10" and first.ok, key
+        assert second.data == b"\x00\x00", key

@@ -10,8 +10,9 @@ von Microchip. Läuft unter Linux und Windows.
 > (Firmware `0x2304`, Windows) getestet:** Status, Konfiguration, Senden
 > mit Loopback-Echo, Master Request mit fremdem Slave und ohne Slave,
 > Slave-Profil (Gerät antwortet auch auf eigene Header), 9600/19200 Bd.
+> Master-Frames an einen fremden Slave (Audi-Bedienteil).
 > **Noch nicht getestet:** fremder Master (Autobaud-Messung, Mitschnitt),
-> Datenframes an fremde Knoten, Linux.
+> Linux.
 > Details: [docs/PROTOKOLL.md](docs/PROTOKOLL.md).
 
 ## Gerät
@@ -104,7 +105,7 @@ print(lin.request(0x21))
 ```
 
 Ein vollständiges Beispiel mit echtem Slave (Audi-Bedienteil
-8W1 919 616, Drehen/Drücken/Kippen):
+8W1 919 616, Drehen/Drücken/Kippen, Tastenbeleuchtung):
 [`examples/audi_8w1919616.py`](examples/audi_8w1919616.py), Belegung in
 [docs/AUDI_8W1919616.md](docs/AUDI_8W1919616.md).
 

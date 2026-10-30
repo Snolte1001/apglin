@@ -115,7 +115,9 @@ def test_rotation_while_pressed():
 
 def test_bit1_never_seen():
     states = [knob.decode(data) for rows in SEGMENTS.values() for _, data, _ in rows if data]
-    assert not any(s.unknown_buttons for s in states)
+    # Bit 4 (Response_Error) kommt nur nach fehlerhaften Frames an ID 0x01,
+    # siehe test_recordings; beim Bedienen nie
+    assert not any(s.unknown_buttons or s.response_error for s in states)
 
 
 def test_decode():
@@ -126,3 +128,18 @@ def test_decode():
     assert knob.button_names(0x00) == "losgelassen"
     with pytest.raises(ValueError):
         knob.decode(b"\x00")
+
+
+def test_response_error_bit():
+    s = knob.decode(b"\x00\x11")
+    assert s.response_error and s.pressed and not s.unknown_buttons
+    assert knob.button_names(0x10) == "losgelassen"
+
+
+def test_illumination_payload():
+    # am Gerät beobachtet: 00 aus, 01 sehr dunkel, 0A dunkel, 32 sichtbar
+    # dunkler als FF, 64 gleich hell wie FF
+    assert knob.illumination_payload(0) == b"\x00"
+    assert knob.illumination_payload(100) == b"\x64"
+    with pytest.raises(ValueError):
+        knob.illumination_payload(256)

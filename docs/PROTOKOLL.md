@@ -322,15 +322,17 @@ Erledigt (30.10.2026, gleiches Gerät, ein fremder Slave am Bus, Master-Pull-up)
   erste weckte den Slave. Aufwachverhalten, `retries`, Autobaud und
   Kollision mit dem eigenen Profil siehe oben.
 - Mitschnitte `tests/recordings/slave_*.txt`.
-- Der Slave ist ein Audi-Bedienteil 8W1 919 616; Belegung seines Frames in
-  [AUDI_8W1919616.md](AUDI_8W1919616.md), 31 318 Frames mit 30 ms Abstand
-  ohne Fehler.
+- Der Slave ist ein Audi-Bedienteil 8W1 919 616; Belegung seiner Frames
+  (Tasten `0x10`, Beleuchtung `0x01`) in [AUDI_8W1919616.md](AUDI_8W1919616.md),
+  31 318 Frames mit 30 ms Abstand ohne Fehler.
+- Senden an einen fremden Knoten: Master-Frames werden angenommen und
+  ausgewertet (Beleuchtung), fehlerhafte Frames meldet der Slave per
+  Response_Error. Damit sind Break, Sync, PID, Daten und enhanced-Prüfsumme
+  aus dem Analyzer bei 19200 Bd an echter Hardware bestätigt.
 
 Offen (braucht weitere Hardware oder Angaben zum Slave):
 
-1. Datenframes an einen fremden Knoten (dieser Slave hört auf keine bekannte
-   ID; ohne Kenntnis seiner Frames wurde nichts an ihn gesendet) sowie Pegel,
-   Break-Länge und Timing mit Logikanalysator.
+1. Pegel, Break-Länge und Timing mit Logikanalysator.
 2. Autobaud und Mitschnitt mit fremdem Master (`monitor --autobaud`).
 3. Slave-Profil gegen fremden Master; ob Bit 5 „enhanced“ bei anderer
    Firmware wirkt.
