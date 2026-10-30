@@ -96,7 +96,7 @@ def cmd_send(args) -> int:
 def cmd_request(args) -> int:
     with _open(args) as lin:
         _configure(lin, args)
-        print(lin.request(args.id, timeout=args.timeout))
+        print(lin.request(args.id, timeout=args.timeout, retries=args.retries))
     return 0
 
 
@@ -132,6 +132,8 @@ def build_parser() -> argparse.ArgumentParser:
     bus(req)
     req.add_argument("id", type=_int)
     req.add_argument("-t", "--timeout", type=float, default=1.0)
+    req.add_argument("-r", "--retries", type=int, default=1,
+                     help="Header wiederholen ohne Antwort (weckt schlafende Slaves), Standard 1")
     req.set_defaults(func=cmd_request)
     return p
 

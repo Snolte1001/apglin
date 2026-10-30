@@ -199,8 +199,21 @@ Ereignisse bis zur nächsten Statusantwort.
 Autobaud über die Loopback-Strecke **[HW]**: Mit Bit 7 in Offset 16 sendet
 das Gerät weiter mit der BRG aus dem Control Block (9600 und 19200 Bd
 geprüft). Eigene Frames lösen keine Messung aus: kein Ereignis `85`, die BRG
-im Status Block bleibt unverändert. Ob ein fremder Master gemessen wird,
-ist nicht geprüft.
+im Status Block bleibt unverändert. Auch die Antwort eines fremden Slaves
+(19200 Bd) löst keine Messung aus, sie wird normal empfangen. Ob ein fremder
+Master gemessen wird, ist nicht geprüft.
+
+Fremder Slave **[HW]**: Seine Antwort kommt wie die Loopback-Bytes als
+`10`-Bytes mit Zeitstempel nach der PID, ohne eigenes Ereignis; zwischen
+PID und erstem Datenbyte liegen 1–2 Ticks. Ein schlafender Slave (LIN: nach
+4 s Busruhe) nutzt den ersten Header zum Aufwachen und beantwortet erst den
+nächsten; nach 5 s Pause bleibt der erste Header regelmäßig ohne Antwort,
+nach 3 s nicht. `request(..., retries=n)` wiederholt den Header deshalb,
+`apglin request` standardmäßig einmal.
+
+Antworten Slave und eigenes Slave-Profil auf denselben Header, meldet das
+Gerät einen Tick nach der PID einen Break `83`, keine Datenbytes, kein
+Fehlerereignis und keine Fehlerbits im Status Block **[HW]**.
 
 Fehlerarten der Microchip-Software **[UG]**: Parität, Prüfsumme, „No Answer“
 (Header ohne Daten innerhalb des Bus-Timeouts) und Bus-Timeout. TX-Bit-,
@@ -289,16 +302,25 @@ Erledigt (30.10.2026, gleiches Gerät, nur VBAT, kein weiterer Knoten):
   mit `tests/hw_scenarios.py`, abgespielt von `tests/test_recordings.py`
   (prüft jeden geschriebenen Report gegen die Aufnahme).
 
-Offen (braucht weitere Hardware):
+Erledigt (30.10.2026, gleiches Gerät, ein fremder Slave am Bus, Master-Pull-up):
 
-1. Senden gegen einen zweiten LIN-Knoten oder Logikanalysator prüfen
-   (Pegel, Break-Länge, Timing außerhalb der Loopback-Strecke).
-2. Master Request mit fremdem Slave (Antwort über den Bus statt aus dem
-   eigenen Profil).
-3. Autobaud und Mitschnitt mit fremdem Master (`monitor --autobaud`).
-4. Slave-Profil gegen fremden Master; ob Bit 5 „enhanced“ bei anderer
+- Header (Break, Sync, PID) werden vom fremden Slave erkannt: Er antwortet
+  bei 19200 Bd auf ID `0x10` mit `00 00`, Prüfsumme `AF` (enhanced); bei
+  9600 und 10417 Bd keine Antwort. Suche über alle 64 IDs: nur `0x10`.
+- Master Request mit fremdem Slave: 29 von 30 Anfragen beantwortet, die
+  erste weckte den Slave. Aufwachverhalten, `retries`, Autobaud und
+  Kollision mit dem eigenen Profil siehe oben.
+- Mitschnitte `tests/recordings/slave_*.txt`.
+
+Offen (braucht weitere Hardware oder Angaben zum Slave):
+
+1. Datenframes an einen fremden Knoten (dieser Slave hört auf keine bekannte
+   ID; ohne Kenntnis seiner Frames wurde nichts an ihn gesendet) sowie Pegel,
+   Break-Länge und Timing mit Logikanalysator.
+2. Autobaud und Mitschnitt mit fremdem Master (`monitor --autobaud`).
+3. Slave-Profil gegen fremden Master; ob Bit 5 „enhanced“ bei anderer
    Firmware wirkt.
-5. Linux (hidraw, udev-Regel).
+4. Linux (hidraw, udev-Regel).
 
 ## Quellen
 

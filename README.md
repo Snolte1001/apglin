@@ -8,10 +8,10 @@ von Microchip. Läuft unter Linux und Windows.
 > PICkitS-DLL, der Microchip-Java-Bibliothek (TB3180) und
 > Hardware-Mitschnitten Dritter rekonstruiert. **An einem APGDT001
 > (Firmware `0x2304`, Windows) getestet:** Status, Konfiguration, Senden
-> mit Loopback-Echo, Master Request mit und ohne Antwort, Slave-Profil
-> (Gerät antwortet auch auf eigene Header), 9600/19200 Bd.
-> **Noch nicht getestet:** Betrieb mit fremden LIN-Teilnehmern (Slave,
-> Master, Autobaud-Messung), Linux.
+> mit Loopback-Echo, Master Request mit fremdem Slave und ohne Slave,
+> Slave-Profil (Gerät antwortet auch auf eigene Header), 9600/19200 Bd.
+> **Noch nicht getestet:** fremder Master (Autobaud-Messung, Mitschnitt),
+> Datenframes an fremde Knoten, Linux.
 > Details: [docs/PROTOKOLL.md](docs/PROTOKOLL.md).
 
 ## Gerät
@@ -56,8 +56,9 @@ with LinAnalyzer.open() as lin:
     # Frame als Master senden (Prüfsumme wird berechnet)
     lin.send_frame(0x0C, bytes([0x11, 0x04, 0, 0, 0, 0, 0xC0, 0]))
 
-    # Header senden, Antwort eines Slaves lesen
-    answer = lin.request(0x21, timeout=1.0)
+    # Header senden, Antwort eines Slaves lesen; retries=1 weckt einen
+    # schlafenden Slave (nach 4 s Busruhe beantwortet er erst den 2. Header)
+    answer = lin.request(0x21, timeout=1.0, retries=1)
     print(answer.data.hex(), answer.ok)
 
     # Bus mitschneiden

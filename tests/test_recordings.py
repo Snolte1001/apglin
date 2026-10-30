@@ -117,3 +117,49 @@ def test_replay_detects_changed_command_sequence():
             lin.configure_lin(9600)
     finally:
         lin.close()
+
+
+# --- mit Slave am Bus (antwortet bei 19200 Bd nur auf ID 0x10) ---------------
+
+def test_slave_scan_wakes_up_on_first_header():
+    a = replay("slave_scan")["answers"]
+    # erster Header nach 5 s Busruhe weckt den Slave nur
+    assert a[0].frame_id == 0x10 and a[0].errors == FrameError.NO_RESPONSE
+    for frame in (a[2], a[5]):
+        assert frame.frame_id == 0x10 and frame.data == b"\x00\x00"
+        assert frame.checksum == 0xAF and frame.checksum_type is ChecksumType.ENHANCED
+        assert frame.ok and not frame.transmitted
+    for frame in (a[1], a[3], a[4]):
+        assert frame.errors == FrameError.NO_RESPONSE
+
+
+def test_slave_wakeup_retry():
+    r = replay("slave_wakeup_retry")
+    assert r["first"].ok and r["first"].data == b"\x00\x00"
+    assert r["second"].ok
+
+
+def test_slave_wrong_baudrate():
+    r = replay("slave_wrong_baudrate")
+    assert r["answer"].errors == FrameError.NO_RESPONSE
+    assert not r["status"].has_error
+
+
+def test_slave_autobaud():
+    r = replay("slave_autobaud")
+    assert r["answer"].ok and r["answer"].data == b"\x00\x00"
+    assert r["status"].control_block.autobaud
+    assert r["status"].active_baudrate == 19231
+    assert not [e for e in r["events"] if e.tag == c.Event.LIN_AUTOBAUD]
+
+
+def test_slave_collision_with_own_profile():
+    r = replay("slave_collision")
+    assert r["awake"].ok
+    # Slave und eigenes Profil antworten gleichzeitig: nach der PID meldet
+    # das Gerät einen Break, keine Daten, keinen Fehler
+    assert r["collision"].errors == FrameError.NO_RESPONSE
+    tags = [e.tag for e in r["events"] if e.tag != c.Event.TIME]
+    assert tags == [c.Event.LIN_BREAK_RX, c.Event.MARKER, c.Event.DATA_BYTE, c.Event.LIN_BREAK_RX]
+    assert not r["status"].has_error
+    assert r["own"].ok and r["own"].data == b"\x01"

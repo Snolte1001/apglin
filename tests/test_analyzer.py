@@ -1,6 +1,6 @@
 import pytest
 
-from apglin import ConfigurationError, DeviceTimeoutError, LinAnalyzer, TransportError
+from apglin import ConfigurationError, DeviceTimeoutError, FrameError, LinAnalyzer, TransportError
 from apglin import constants as c
 from apglin.lin import ChecksumType, protected_id
 from apglin.protocol import ControlBlock
@@ -254,3 +254,37 @@ def test_frame_str_marks_direction(lin, sim):
     assert " TX ID=0x05" in str(lin.receive(timeout=1.0))
     sim.inject_frame(0x06, b"\x01")
     assert " RX ID=0x06" in str(lin.receive(timeout=1.0))
+
+
+class SleepingSlave(SimulatedTransport):
+    """Slave, der den ersten Header nur zum Aufwachen nutzt."""
+
+    def __init__(self):
+        super().__init__()
+        self.responders[0x10] = b"\x00\x00"
+        self.asleep = True
+
+    def _slave_answer(self, pid):
+        if self.asleep:
+            self.asleep = False
+            return b""
+        return super()._slave_answer(pid)
+
+
+def test_request_retries_wake_sleeping_slave():
+    lin = LinAnalyzer(SleepingSlave(), frame_timeout=0.05)
+    try:
+        lin.configure_lin(19200)
+        assert lin.request(0x10, retries=1).data == b"\x00\x00"
+    finally:
+        lin.close()
+
+
+def test_request_without_retries_hits_sleeping_slave():
+    lin = LinAnalyzer(SleepingSlave(), frame_timeout=0.05)
+    try:
+        lin.configure_lin(19200)
+        assert lin.request(0x10).errors == FrameError.NO_RESPONSE
+        assert lin.request(0x10).ok
+    finally:
+        lin.close()

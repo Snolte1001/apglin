@@ -11,7 +11,7 @@ from typing import Callable, Iterator, List, Mapping, Optional
 from . import constants as c
 from . import protocol
 from .exceptions import ConfigurationError, DeviceTimeoutError, ProtocolError, TransportError
-from .frames import FrameAssembler, LinFrame
+from .frames import FrameAssembler, FrameError, LinFrame
 from .lin import ChecksumType, frame_checksum, protected_id
 from .protocol import BufferStatus, ControlBlock, DeviceStatus
 from .stream import StreamEvent, StreamParser
@@ -452,8 +452,22 @@ class LinAnalyzer:
                 self._sent.append((time.monotonic(), pid & 0xFF, payload))
         self._run_script(script, wait, timeout)
 
-    def request(self, frame_id: int, timeout: Optional[float] = None) -> LinFrame:
-        """Header senden und die Slave-Antwort als Frame zurückgeben."""
+    def request(self, frame_id: int, timeout: Optional[float] = None, *,
+                retries: int = 0) -> LinFrame:
+        """Header senden und die Slave-Antwort als Frame zurückgeben.
+
+        ``retries``: so oft den Header erneut senden, solange keine Antwort
+        kommt. Ein schlafender Slave (nach 4 s Busruhe) wacht am ersten
+        Header auf und beantwortet erst den nächsten.
+        """
+        frame = self._request_once(frame_id, timeout)
+        for _ in range(retries):
+            if not frame.errors & FrameError.NO_RESPONSE:
+                break
+            frame = self._request_once(frame_id, timeout)
+        return frame
+
+    def _request_once(self, frame_id: int, timeout: Optional[float]) -> LinFrame:
         timeout = self.response_timeout if timeout is None else timeout
         pid = protected_id(frame_id)
         answer: "queue.Queue[LinFrame]" = queue.Queue()

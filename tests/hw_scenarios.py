@@ -1,9 +1,14 @@
 """Abläufe am echten Gerät, deren Mitschnitte in ``tests/recordings`` liegen.
 
 ``test_recordings.py`` spielt die Mitschnitte mit denselben Funktionen ab.
-Neu aufnehmen (APGDT001 mit VBAT, ohne weitere Busteilnehmer):
+Neu aufnehmen (APGDT001 mit VBAT):
 
     python tests/hw_scenarios.py [Name ...]
+
+Abläufe ``slave_*`` brauchen den Slave vom 30.10.2026 am Bus (antwortet bei
+19200 Bd nur auf ID 0x10 mit ``00 00``, schläft nach 4 s Busruhe), die
+übrigen laufen mit und ohne ihn. ``live`` ist nur bei der Aufnahme gesetzt;
+Pausen, die den Slave einschlafen lassen, entfallen beim Abspielen.
 """
 
 import datetime
@@ -19,6 +24,10 @@ RECORDINGS = Path(__file__).with_name("recordings")
 SCENARIOS = {}
 
 
+SLAVE_ID = 0x10
+SLAVE_SLEEP_S = 5.0
+
+
 def scenario(func):
     SCENARIOS[func.__name__] = func
     return func
@@ -29,27 +38,27 @@ def _frames(lin, timeout=0.3):
 
 
 @scenario
-def loopback_19200(lin):
+def loopback_19200(lin, live=False):
     lin.configure_lin(19200)
     lin.send_frame(0x0C, bytes.fromhex("110400000000C000"), wait=True)
     return {"frames": _frames(lin)}
 
 
 @scenario
-def classic_9600(lin):
+def classic_9600(lin, live=False):
     lin.configure_lin(9600)
     lin.send_frame(0x3C, bytes(range(1, 9)), wait=True)
     return {"frames": _frames(lin), "status": lin.request_status()}
 
 
 @scenario
-def request_no_slave(lin):
+def request_no_slave(lin, live=False):
     lin.configure_lin(19200)
     return {"answer": lin.request(0x21, timeout=0.5)}
 
 
 @scenario
-def slave_responses(lin):
+def slave_responses(lin, live=False):
     lin.configure_lin(19200)
     status = lin.set_slave_responses({
         0x21: b"\x01\x02\x03",
@@ -63,7 +72,7 @@ def slave_responses(lin):
 
 
 @scenario
-def slave_profile_entries(lin):
+def slave_profile_entries(lin, live=False):
     lin.configure_lin(19200)
     pid = protected_id(0x21)
     # Gerät rechnet die Prüfsumme (classic); 0xB3 = zusätzlich Bit „enhanced“
@@ -88,7 +97,7 @@ def slave_profile_entries(lin):
 
 
 @scenario
-def warm_reset_clears_profile(lin):
+def warm_reset_clears_profile(lin, live=False):
     lin.configure_lin(19200)
     lin.set_slave_responses({0x21: b"\x01"})
     before = lin.request(0x21, timeout=0.5)
@@ -99,13 +108,66 @@ def warm_reset_clears_profile(lin):
 
 
 @scenario
-def autobaud_loopback(lin):
+def autobaud_loopback(lin, live=False):
     events = []
     lin.add_event_listener(events.append)
     lin.configure_lin(9600, autobaud=True)
     lin.send_frame(0x0C, b"\x01\x02\x03\x04", wait=True)
     frames = _frames(lin)
     return {"frames": frames, "status": lin.request_status(), "events": events}
+
+
+@scenario
+def slave_scan(lin, live=False):
+    lin.configure_lin(19200)
+    if live:
+        time.sleep(SLAVE_SLEEP_S)
+    # erster Header weckt den Slave, erst die folgenden werden beantwortet
+    ids = (SLAVE_ID, 0x0F, SLAVE_ID, 0x11, 0x3D, SLAVE_ID)
+    return {"answers": [lin.request(i, timeout=0.3) for i in ids]}
+
+
+@scenario
+def slave_wakeup_retry(lin, live=False):
+    lin.configure_lin(19200)
+    if live:
+        time.sleep(SLAVE_SLEEP_S)
+    first = lin.request(SLAVE_ID, timeout=0.3, retries=2)
+    return {"first": first, "second": lin.request(SLAVE_ID, timeout=0.3)}
+
+
+@scenario
+def slave_wrong_baudrate(lin, live=False):
+    lin.configure_lin(9600)
+    return {"answer": lin.request(SLAVE_ID, timeout=0.3, retries=1),
+            "status": lin.request_status()}
+
+
+@scenario
+def slave_autobaud(lin, live=False):
+    events = []
+    lin.add_event_listener(events.append)
+    lin.configure_lin(19200, autobaud=True)
+    answer = lin.request(SLAVE_ID, timeout=0.3, retries=1)
+    return {"answer": answer, "status": lin.request_status(), "events": events}
+
+
+@scenario
+def slave_collision(lin, live=False):
+    events = []
+    lin.add_event_listener(events.append)
+    lin.configure_lin(19200)
+    awake = lin.request(SLAVE_ID, timeout=0.3, retries=1)
+    lin.set_slave_responses({SLAVE_ID: b"4", 0x21: b""})
+    events.clear()
+    collision = lin.request(SLAVE_ID, timeout=0.3)
+    time.sleep(0.2)
+    collision_events = list(events)
+    lin.clear_received()
+    own = lin.request(0x21, timeout=0.3)
+    lin.enable_slave_profile(False)
+    return {"awake": awake, "collision": collision, "events": collision_events,
+            "own": own, "status": lin.request_status()}
 
 
 def record(names):
@@ -119,12 +181,13 @@ def record(names):
         try:
             firmware = lin.request_status().firmware_version_str
             transport.entries.clear()
-            result = SCENARIOS[name](lin)
+            result = SCENARIOS[name](lin, live=True)
             time.sleep(0.2)
         finally:
             lin.close()
+        bus = "Slave am Bus (ID 0x10)" if name.startswith("slave_") else "kein weiterer Busteilnehmer"
         transport.save(RECORDINGS / f"{name}.txt",
-                       f"{name}: APGDT001, Firmware {firmware}, VBAT, kein weiterer Busteilnehmer\n"
+                       f"{name}: APGDT001, Firmware {firmware}, VBAT, {bus}\n"
                        f"aufgenommen {datetime.date.today().isoformat()} mit tests/hw_scenarios.py")
         print(f"{name}: {len(transport.entries)} Reports")
         for key, value in result.items():
