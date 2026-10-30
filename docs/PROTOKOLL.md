@@ -67,16 +67,20 @@ Folge von Gruppen `Tag [Daten]`, Ende mit `80` oder Füllbytes. **[DLL]**
 | `81` | 2 | Firmwareversion, Little Endian |
 | `82` | 24 | Control Block |
 | `83` | 20 | Status Block |
-| `84` | 6 | Füllstände: CBUF1 belegt/frei, CBUF2 belegt/frei, CBUF3 belegt/frei (Reihenfolge belegt/frei **[ANNAHME]**, CBUF1-frei an Index 1 und CBUF3 an 4/5 **[DLL]**) |
+| `84` | 6 | Füllstände: CBUF1 belegt/frei, CBUF2 belegt/frei, CBUF3 belegt/frei **[DLL]**. Leeres Gerät meldet `00 28 00 80 00 28`, also Puffergrößen 40 / 128 / 40 Byte **[HW]** |
 | `85` | 1+n | CBUF1-Daten (Länge + Daten) |
 | `86` | 1+n | CBUF2-Daten = Ereignisstrom, siehe unten |
 | `87` | 1+n | CBUF3-Daten |
 | `88` | 1 | Paketzähler |
 
-Ein Statusreport enthält `88 81 82 83 84 80`. Die DLL wartet auf Gruppe `84`
+Ein Statusreport enthält `88 81 82 83 84 80`. Statusanfrage und Zerlegung
+funktionieren am Gerät (Windows, hidapi) **[HW]**. Die DLL wartet auf Gruppe `84`
 als Abschluss der Statusantwort.
 
 ## Control Block (24 Byte)
+
+Nach dem Einschalten (Idle, Modus 0) meldet das Gerät
+`C0 00 00 01 FF 00 … 00` **[HW]**.
 
 | Offset | Bedeutung |
 |---|---|
@@ -173,17 +177,22 @@ Fehlerarten der Microchip-Software **[UG]**: Parität, Prüfsumme, „No Answer�
 Framing-, Break- und SWBreak-Fehler sind laut User's Guide nicht
 implementiert.
 
-## Offene Punkte für den ersten Hardwaretest
+## Hardwaretests
 
-1. Statusantwort und Firmwareversion lesen (`apglin info`).
-2. `configure_lin` mit Echo-Vergleich.
-3. Senden ohne Bus, nur mit VBAT: `apglin send 0x0C 11 04 00 00 00 00 C0 00`
+Erledigt (30.10.2026, APGDT001, Firmware `0x2304`, Windows):
+
+- Statusantwort und Firmwareversion lesen (`apglin info`) **[HW]**.
+
+Offen:
+
+1. `configure_lin` mit Echo-Vergleich.
+2. Senden ohne Bus, nur mit VBAT: `apglin send 0x0C 11 04 00 00 00 00 C0 00`
    muss dank Loopback als Frame zurückkommen. Danach gegen einen zweiten
    LIN-Knoten oder Logikanalysator prüfen.
-4. Empfang (`apglin monitor --raw`): kommt das Sync-Byte? kommt `84` vor dem
+3. Empfang (`apglin monitor --raw`): kommt das Sync-Byte? kommt `84` vor dem
    Echo? Zeitstempelauflösung 409 µs oder 409,6 µs?
-5. Master Request (`apglin request`) mit echtem Slave.
-6. Format eines kompletten Slave-Profils für CBUF3 (`load_slave_profile`).
+4. Master Request (`apglin request`) mit echtem Slave.
+5. Format eines kompletten Slave-Profils für CBUF3 (`load_slave_profile`).
 
 ## Quellen
 

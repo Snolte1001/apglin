@@ -23,7 +23,7 @@ def lin(sim):
 def test_status(lin):
     st = lin.request_status()
     assert st.firmware_version == SIM_FIRMWARE_VERSION
-    assert st.buffers.cbuf1_free == 255
+    assert st.buffers.cbuf1_free == 40
     assert not st.has_error
 
 
@@ -115,10 +115,16 @@ def test_slave_profile_entry(lin):
     assert lin.read_slave_profile_entry(0x4C) == b"\x01\x02"
 
 
+def test_load_slave_profile_too_big(lin):
+    lin.configure_lin(19200)
+    with pytest.raises(ValueError):
+        lin.load_slave_profile(bytes(41))
+
+
 def test_load_slave_profile(lin, sim):
     lin.configure_lin(19200)
-    lin.load_slave_profile(bytes(range(70)))
-    assert sim.cbuf3 == bytes(range(70))
+    lin.load_slave_profile(bytes(range(30)))
+    assert sim.cbuf3 == bytes(range(30))
     assert lin.request_status().control_block.slave_profile
 
 
@@ -128,7 +134,7 @@ def test_cbuf1_flow_control(lin, sim):
     for _ in range(30):
         lin.send_frame(0x01, bytes(8))
     special = [r for r in sim.written if r[0] == c.Command.SPECIAL_STATUS]
-    # 30 Skripte à 15 Byte passen nicht in einen 255-Byte-Puffer ohne Nachfragen
+    # 30 Skripte à 15 Byte passen nicht in einen 40-Byte-Puffer ohne Nachfragen
     assert len(special) >= 2
 
 

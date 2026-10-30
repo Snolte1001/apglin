@@ -23,9 +23,11 @@ class SimulatedTransport(Transport):
         self._out: "queue.Queue[bytes]" = queue.Queue()
         self.control_block = bytearray(c.CONTROL_BLOCK_SIZE)
         self.status_block = bytearray(c.STATUS_BLOCK_SIZE)
-        self.cbuf1_size = 255
+        # Puffergrößen wie am echten Gerät gemessen (Firmware 0x2304)
+        self.cbuf1_size = 40
+        self.cbuf2_size = 128
         self.cbuf3 = bytearray()
-        self.cbuf3_size = 255
+        self.cbuf3_size = 40
         self.slave_profiles: Dict[int, bytes] = {}
         # Slave-Knoten am Bus: ID -> Antwortdaten (ohne Prüfsumme)
         self.responders: Dict[int, bytes] = {}
@@ -79,7 +81,7 @@ class SimulatedTransport(Transport):
         payload += bytes([c.Group.FIRMWARE_VERSION, SIM_FIRMWARE_VERSION & 0xFF, SIM_FIRMWARE_VERSION >> 8])
         payload += bytes([c.Group.CONTROL_BLOCK]) + bytes(self.control_block)
         payload += bytes([c.Group.STATUS_BLOCK]) + bytes(self.status_block)
-        payload += bytes([c.Group.CBUF_STATUS, used, self.cbuf1_size - used, 0, 255,
+        payload += bytes([c.Group.CBUF_STATUS, used, self.cbuf1_size - used, 0, self.cbuf2_size,
                           len(self.cbuf3), self.cbuf3_size - len(self.cbuf3)])
         payload += bytes([c.Group.END])
         self._report(payload)

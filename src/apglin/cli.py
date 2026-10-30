@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from . import __version__
 from .analyzer import LinAnalyzer
+from .constants import CommMode
 from .exceptions import ApgLinError
 from .lin import ChecksumType
 from .transport import list_devices
@@ -25,7 +26,16 @@ def _open(args) -> LinAnalyzer:
 
 
 def _configure(lin: LinAnalyzer, args) -> None:
+    if args.raw:
+        lin.add_event_listener(lambda ev: print("  ", ev, flush=True))
     lin.configure_lin(args.baud, autobaud=args.autobaud)
+
+
+def _mode_name(mode) -> str:
+    try:
+        return f"{mode} ({CommMode(mode).name})"
+    except ValueError:
+        return str(mode)
 
 
 def cmd_list(args) -> int:
@@ -42,15 +52,16 @@ def cmd_info(args) -> int:
     with _open(args) as lin:
         st = lin.request_status()
         print(f"Firmware:      {st.firmware_version_str}")
-        print(f"Modus:         {st.comm_mode}")
+        lin_mode = st.comm_mode == CommMode.LIN
+        print(f"Modus:         {_mode_name(st.comm_mode)}")
         if st.control_block:
             cb = st.control_block
-            print(f"Baudrate (CB): {cb.baudrate}")
+            print(f"Baudrate (CB): {cb.baudrate if lin_mode else '– (nicht im LIN-Modus)'}")
             print(f"Autobaud:      {cb.autobaud}")
             print(f"Empfang:       {cb.receive}")
             print(f"Chip Select:   {cb.chip_select}")
             print(f"Control Block: {bytes(cb).hex(' ')}")
-        print(f"Baudrate (SB): {st.active_baudrate}")
+        print(f"Baudrate (SB): {st.active_baudrate if lin_mode else '–'}")
         print(f"Fehlercode:    0x{st.error_code:06X}")
         if st.buffers:
             print(f"Puffer:        {st.buffers}")
@@ -60,8 +71,6 @@ def cmd_info(args) -> int:
 def cmd_monitor(args) -> int:
     with _open(args) as lin:
         _configure(lin, args)
-        if args.raw:
-            lin.add_event_listener(lambda ev: print("  ", ev))
         print(f"Höre auf dem Bus ({'Autobaud' if args.autobaud else args.baud} Bd), Strg+C beendet.")
         try:
             while True:
@@ -78,10 +87,9 @@ def cmd_send(args) -> int:
     with _open(args) as lin:
         _configure(lin, args)
         for _ in range(args.repeat):
-            lin.send_frame(args.id, data, ChecksumType(args.checksum), wait=True)
-            frame = lin.receive(timeout=0.5)
-            if frame is not None:
-                print(frame)
+            lin.send_frame(args.id, data, ChecksumType(args.checksum))
+            frame = lin.receive(timeout=1.0)
+            print(frame if frame is not None else "Kein Echo empfangen (VBAT angeschlossen?)", flush=True)
     return 0
 
 
@@ -106,10 +114,10 @@ def build_parser() -> argparse.ArgumentParser:
     def bus(sp):
         sp.add_argument("-b", "--baud", type=int, default=19200)
         sp.add_argument("--autobaud", action="store_true")
+        sp.add_argument("--raw", action="store_true", help="Rohereignisse des Geräts ausgeben")
 
     mon = sub.add_parser("monitor", help="Frames mitschneiden")
     bus(mon)
-    mon.add_argument("--raw", action="store_true", help="Rohereignisse zusätzlich ausgeben")
     mon.set_defaults(func=cmd_monitor)
 
     snd = sub.add_parser("send", help="Frame als Master senden")
