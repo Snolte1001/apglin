@@ -6,9 +6,12 @@ von Microchip. Läuft unter Linux und Windows.
 
 > **Stand 0.1.0:** Das Protokoll ist aus den Microchip-Unterlagen, der
 > PICkitS-DLL, der Microchip-Java-Bibliothek (TB3180) und
-> Hardware-Mitschnitten Dritter rekonstruiert. Die Bibliothek
-> ist gegen einen Simulator getestet, **noch nicht an echter Hardware**.
-> Details und offene Punkte: [docs/PROTOKOLL.md](docs/PROTOKOLL.md).
+> Hardware-Mitschnitten Dritter rekonstruiert. **An einem APGDT001
+> (Firmware `0x2304`, Windows) getestet:** Status, Konfiguration, Senden
+> mit Loopback-Echo, Master Request ohne Slave, 9600/19200 Bd.
+> **Noch nicht getestet:** Betrieb mit echten LIN-Teilnehmern (Slave-Antworten,
+> fremder Master, Autobaud), Slave-Profil, Linux.
+> Details: [docs/PROTOKOLL.md](docs/PROTOKOLL.md).
 
 ## Gerät
 

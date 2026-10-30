@@ -212,15 +212,15 @@ Erledigt (30.10.2026, APGDT001, Firmware `0x2304`, Windows):
 - Master Request ohne Slave (`request 0x21`): Echo der PID `0x61`, keine
   Daten → `NO_RESPONSE`.
 - 9600 Bd, Diagnose-ID `0x3C` mit classic-Prüfsumme `DB`.
+- Nach Pause im LIN-Modus beginnt die Zeit wieder bei ~0,02 s (alte
+  Ereignisse verworfen), eigene Frames als `TX` erkannt.
 
 Offen:
 
-1. Prüfen, dass der Zeitstempel nach längerer Pause im LIN-Modus wieder bei
-   ~0,02 s beginnt (Verwerfen alter Ereignisse).
-2. Senden gegen einen zweiten LIN-Knoten oder Logikanalysator prüfen.
-3. Master Request mit echtem Slave.
-4. Autobaud und Mitschnitt mit fremdem Master (`monitor --autobaud`).
-5. Format eines kompletten Slave-Profils für CBUF3 (`load_slave_profile`).
+1. Senden gegen einen zweiten LIN-Knoten oder Logikanalysator prüfen.
+2. Master Request mit echtem Slave.
+3. Autobaud und Mitschnitt mit fremdem Master (`monitor --autobaud`).
+4. Format eines kompletten Slave-Profils für CBUF3 (`load_slave_profile`).
 
 ## Quellen
 

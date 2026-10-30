@@ -20,6 +20,8 @@ from .transport import HidTransport, Transport
 log = logging.getLogger(__name__)
 
 SENT_MATCH_WINDOW_S = 2.0
+CBUF1_POLL_S = 0.005
+CBUF1_WAIT_S = 1.0
 
 FrameListener = Callable[[LinFrame], None]
 EventListener = Callable[[StreamEvent], None]
@@ -258,18 +260,25 @@ class LinAnalyzer:
                     self._marker_cond.wait(remaining)
 
     def _reserve_cbuf1(self, size: int) -> None:
-        """Wartet, bis Skriptpuffer 1 genug Platz hat (wie die Microchip-DLL)."""
+        """Wartet, bis Skriptpuffer 1 genug Platz hat.
+
+        Der Puffer fasst nur 40 Byte (zwei volle Frames). Die Microchip-DLL
+        fragt alle 100 ms nach; ein Frame dauert bei 19200 Bd aber nur
+        rund 6 ms, deshalb wird hier enger nachgefragt.
+        """
         if size < self._cbuf1_free:
             self._cbuf1_free -= size
             return
-        for _ in range(6):
+        deadline = time.monotonic() + CBUF1_WAIT_S
+        while True:
             status = self._request(protocol.special_status_request(), None)
             free = status.buffers.cbuf1_free if status.buffers else 0
             if size < free:
                 self._cbuf1_free = free - size
                 return
-            time.sleep(0.1)
-        raise DeviceTimeoutError("Skriptpuffer 1 des Geräts bleibt voll")
+            if time.monotonic() > deadline:
+                raise DeviceTimeoutError("Skriptpuffer 1 des Geräts bleibt voll")
+            time.sleep(CBUF1_POLL_S)
 
     # --- Status und Grundbefehle -------------------------------------------
 
