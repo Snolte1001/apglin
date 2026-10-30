@@ -317,16 +317,20 @@ class LinAnalyzer:
     # --- LIN-Konfiguration -------------------------------------------------
 
     def configure_lin(self, baudrate: Optional[int] = 19200, *, autobaud: bool = False,
-                      receive: bool = True, chip_select: bool = True) -> DeviceStatus:
+                      receive: bool = True, chip_select: bool = True,
+                      flush_byte_count: int = 10, flush_interval_ms: float = 10.0) -> DeviceStatus:
         """Versetzt das Gerät in den LIN-Modus.
 
         ``baudrate=None`` behält den Werkswert. ``autobaud`` misst die
-        Baudrate fremder Master am Sync-Byte.
+        Baudrate fremder Master am Sync-Byte. Die Flush-Werte (10 Byte /
+        10 ms) entsprechen der Microchip-Demo TB3180 und halten die
+        Empfangslatenz klein; der Werkswert ist 53 Byte / 50,7 ms.
         """
         block = ControlBlock.lin_default()
         block.autobaud = autobaud
         block.receive = receive
         block.chip_select = chip_select
+        block.set_flush(True, True, flush_byte_count, flush_interval_ms)
         if baudrate is not None:
             block.baudrate = baudrate
         status = self.write_control_block(block, reset=True)
@@ -362,7 +366,7 @@ class LinAnalyzer:
         return self.write_control_block(block)
 
     def set_flush(self, *, on_count: bool = True, on_time: bool = True,
-                  byte_count: int = 0x35, interval_ms: float = 50.7) -> DeviceStatus:
+                  byte_count: int = 10, interval_ms: float = 10.0) -> DeviceStatus:
         """Wann das Gerät gesammelte Ereignisse an den PC schickt.
 
         Kürzere Intervalle senken die Latenz beim Empfang.

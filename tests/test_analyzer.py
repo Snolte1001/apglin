@@ -176,3 +176,11 @@ def test_control_block_copy_is_independent(lin):
     cb.autobaud = True
     assert not lin.last_status.control_block.autobaud
     assert isinstance(cb, ControlBlock)
+
+
+def test_configure_lin_uses_low_latency_flush(lin):
+    # wie Microchip-Demo TB3180: Set_Buffer_Flush_Parameters(true, true, 10, 10)
+    cb = lin.configure_lin(19200).control_block
+    assert cb.flush_on_count and cb.flush_on_time
+    assert cb.flush_byte_count == 10
+    assert cb.data[c.CB_FLUSH_INTERVAL] == round(10 / 0.409)

@@ -2,15 +2,20 @@
 
 Microchip veröffentlicht keine Protokollbeschreibung. Die offizielle Software
 (bis v2.x .NET mit `PICkitS.dll`, ab v3.0.0 Java) und die Java-Bibliothek aus
-TB3180 sind die einzigen vorgesehenen Schnittstellen. Diese Beschreibung ist
-aus den unten genannten Quellen zusammengetragen.
+TB3180 (`LINdllResource.jar`) sind die einzigen vorgesehenen Schnittstellen.
+Diese Beschreibung ist aus den unten genannten Quellen zusammengetragen.
+
+Die Java-Bibliothek (2016) ist eine direkte Portierung der .NET-DLL: gleiche
+Klassen, Methoden und Konstanten. Beide Implementierungen stimmen in allen
+hier beschriebenen Bytefolgen überein.
 
 **Belastbarkeit** – jede Angabe trägt eine Kennung:
 
 | Kennung | Bedeutung |
 |---|---|
 | **[HW]** | von Dritten an echter Hardware bestätigt |
-| **[DLL]** | aus dem Verhalten der Microchip-DLL `PICkitS.dll` abgeleitet (die Original-Software arbeitet so) |
+| **[DLL]** | übereinstimmend aus `PICkitS.dll` und `LINdllResource.jar` abgeleitet (die Original-Software arbeitet so) |
+| **[UG]** | steht im LIN Serial Analyzer User's Guide DS51675B |
 | **[ANNAHME]** | eigene Deutung, an Hardware zu prüfen |
 
 ## Gerät
@@ -19,9 +24,17 @@ aus den unten genannten Quellen zusammengetragen.
   Analyzer (DV164122, PID `0x0036`) nutzt dieselbe Firmware-Basis **[DLL]**.
 - Kein Treiber nötig (HID-Klasse). Unter Linux `hidraw`, dafür die udev-Regel
   aus `udev/` installieren.
-- Mikrocontroller PIC18F2450 (Schaltplan im User's Guide DS51675B), Firmware
-  ist die des PICkit Serial Analyzer (DS51647, Kapitel 9).
-- VBAT am LIN-Stecker muss versorgt sein (Bench-Aufbau: 12 V) **[HW]**.
+- Mikrocontroller PIC18F2450, LIN-Transceiver MCP2021-500 **[UG]**. Firmware
+  ist die des PICkit Serial Analyzer (DS51647, Kapitel 9) **[UG]**.
+- Versorgung über VBAT der Klemme (VBAT, LIN, GND) oder Hohlstecker 6,5 × 2,5 mm
+  (Mitte +, beide intern verbunden): 8,0–30,0 V, nominal 12,0–14,4 V, < 5 mA
+  für den Transceiverteil **[UG]**. Ohne VBAT keine LIN-Kommunikation
+  (Bench-Aufbau Dritter: 12 V) **[HW]**.
+- Jumper E1 (intern): gesteckt = Master mit 1 kΩ Pull-up, offen = Slave mit
+  30 kΩ. Auslieferung als Master **[UG]**.
+- Fest verdrahtete Loopback-Strecke: Eigene Sendungen erscheinen im
+  Empfangsstrom, ein Test ohne Bus ist möglich **[UG]**.
+- LEDs: grün USB, gelb Busy, blau LIN (Bus versorgt) **[UG]**.
 - Reports: 64 Byte Nutzdaten, Report-ID 0 **[DLL]**.
 
 ## Ausgehende Reports (Host → Gerät)
@@ -85,6 +98,11 @@ Bedeutung unbekannt und werden unverändert übernommen.
 
 Ablauf beim Umschalten auf LIN **[DLL]**: Kaltstart → Control Block →
 Warmstart → Statusanfrage, die 24 Byte des Echos müssen gleich sein.
+
+Die Microchip-Demo zu TB3180 stellt danach Flush auf 10 Byte / 10 ms
+(`Set_Buffer_Flush_Parameters(true, true, 10, 10)`), damit Frames ohne
+spürbare Verzögerung beim PC ankommen. `apglin` übernimmt das in
+`configure_lin`.
 Spätere Änderungen (Baudrate, Optionen): Control Block → Fehler löschen →
 Statusanfrage und vergleichen.
 
@@ -101,7 +119,7 @@ Statusanfrage und vergleichen.
 
 | Befehl | Argumente | Wirkung |
 |---|---|---|
-| `84` | n, PID, n−1 Byte | Break + Sync + PID + Bytes senden **[HW]**. Die PID wird mit Paritätsbits übergeben, die Prüfsumme hängt der Host als letztes Byte an **[HW]**. n−1 ≤ 9. n = 1 sendet nur den Header (Master Request) **[DLL]** |
+| `84` | n, PID, n−1 Byte | Break + Sync + PID + Bytes senden **[HW]**. Die PID wird mit Paritätsbits übergeben, die Prüfsumme hängt der Host als letztes Byte an **[HW]** (auch die Microchip-Demo rechnet PID und Prüfsumme selbst). n−1 ≤ 9. n = 1 sendet nur den Header (Master Request) **[DLL]** |
 | `86` | PID, n, n Byte | Eintrag im Slave-Profil schreiben **[DLL]** |
 | `87` | PID | Eintrag lesen → Ereignis `88` **[DLL]** |
 | `1F` | Wert | Marker, kommt als Ereignis `1C Wert` zurück; `77` = Skript fertig **[DLL]** |
@@ -145,14 +163,22 @@ nächsten Break, nach 9 Bytes, bei `82` oder nach einer Pause (DLL: 100 ms).
 Das Sync-Byte `0x55` erscheint nicht im Strom **[DLL]**; ob das für alle
 Firmwarestände gilt, ist an Hardware zu prüfen **[ANNAHME]**.
 
-Ob eigene Sendungen vor dem Echo ein `84` (Break gesendet) liefern und
+Eigene Sendungen kommen über die Loopback-Strecke als normale Frames zurück
+**[UG]**; die Java-Bibliothek wartet nach dem Senden bis zu 3 s auf genau
+dieses Echo **[DLL]**. Ob davor ein `84` (Break gesendet) kommt und
 `LinFrame.transmitted` damit zuverlässig ist, ist nicht bestätigt **[ANNAHME]**.
+
+Fehlerarten der Microchip-Software **[UG]**: Parität, Prüfsumme, „No Answer“
+(Header ohne Daten innerhalb des Bus-Timeouts) und Bus-Timeout. TX-Bit-,
+Framing-, Break- und SWBreak-Fehler sind laut User's Guide nicht
+implementiert.
 
 ## Offene Punkte für den ersten Hardwaretest
 
 1. Statusantwort und Firmwareversion lesen (`apglin info`).
 2. `configure_lin` mit Echo-Vergleich.
-3. Senden (`apglin send 0x0C 11 04 00 00 00 00 C0 00`) gegen einen zweiten
+3. Senden ohne Bus, nur mit VBAT: `apglin send 0x0C 11 04 00 00 00 00 C0 00`
+   muss dank Loopback als Frame zurückkommen. Danach gegen einen zweiten
    LIN-Knoten oder Logikanalysator prüfen.
 4. Empfang (`apglin monitor --raw`): kommt das Sync-Byte? kommt `84` vor dem
    Echo? Zeitstempelauflösung 409 µs oder 409,6 µs?
@@ -161,10 +187,13 @@ Ob eigene Sendungen vor dem Echo ein `84` (Break gesendet) liefern und
 
 ## Quellen
 
-- Microchip, *LIN Serial Analyzer User's Guide*, DS51675B (2008).
+- Microchip, *LIN Serial Analyzer User's Guide*, DS51675B (2008):
+  Hardware, Versorgung, Jumper, Loopback, Fehlerarten.
 - Microchip, *PICkit Serial Analyzer User's Guide*, DS51647 (Firmware, Kapitel 9).
 - Microchip, *PICkit Serial DLL (PICkitS.dll) Function Prototypes* v2.4.
-- Microchip, TB3180 *LIN Analyzer Library Demo* (Java-API, Quellcode nur auf Anfrage).
+- Microchip, TB3180 *LIN Analyzer Library Demo*: `LIN_Library_API_Demo.java`
+  und die Bibliothek `LINdllResource.jar` (2016, per `javap` gelesen; nach
+  Microchip-Lizenz nur mit Microchip-Produkten nutzbar, kein Code übernommen).
 - Dekompilierte C#-Quelle der PICkitS.dll: github.com/claydonkey/PicKitS
   (keine Lizenz angegeben; nur zum Verständnis des Protokolls gelesen, kein Code übernommen).
 - Hardware-Mitschnitte mit APGDT001 bei 19200 Bd: github.com/lakewoodphone/xiao-lin-bench

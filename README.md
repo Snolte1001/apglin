@@ -5,7 +5,8 @@ Python-Bibliothek für den **Microchip APGDT001 LIN Serial Analyzer**, direkt
 von Microchip. Läuft unter Linux und Windows.
 
 > **Stand 0.1.0:** Das Protokoll ist aus den Microchip-Unterlagen, der
-> PICkitS-DLL und Hardware-Mitschnitten Dritter rekonstruiert. Die Bibliothek
+> PICkitS-DLL, der Microchip-Java-Bibliothek (TB3180) und
+> Hardware-Mitschnitten Dritter rekonstruiert. Die Bibliothek
 > ist gegen einen Simulator getestet, **noch nicht an echter Hardware**.
 > Details und offene Punkte: [docs/PROTOKOLL.md](docs/PROTOKOLL.md).
 
@@ -14,10 +15,12 @@ von Microchip. Läuft unter Linux und Windows.
 | | |
 |---|---|
 | USB | HID, VID `04D8`, PID `0A04` |
-| Firmware-Basis | PICkit Serial Analyzer (PIC18F2450) |
+| Firmware-Basis | PICkit Serial Analyzer (PIC18F2450), Transceiver MCP2021 |
 | LIN | Master senden, Master Request, Mitschneiden, Autobaud, Slave-Profil |
 | Baudrate | 20 MHz / (4 · (BRG + 1)), z. B. 19200 → 19231 Bd |
-| Versorgung | VBAT (12 V) am LIN-Stecker anschließen |
+| Versorgung | VBAT 8–30 V (nominal 12–14,4 V) an Klemme oder Hohlstecker, sonst kein LIN |
+| Master/Slave | Jumper E1 innen: gesteckt = Master-Pull-up 1 kΩ (Auslieferung) |
+| Loopback | eigene Sendungen erscheinen im Mitschnitt, Test ohne Bus möglich |
 
 ## Installation
 
