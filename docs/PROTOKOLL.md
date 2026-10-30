@@ -1,0 +1,171 @@
+# USB-Protokoll des APGDT001 LIN Serial Analyzer
+
+Microchip veröffentlicht keine Protokollbeschreibung. Die offizielle Software
+(bis v2.x .NET mit `PICkitS.dll`, ab v3.0.0 Java) und die Java-Bibliothek aus
+TB3180 sind die einzigen vorgesehenen Schnittstellen. Diese Beschreibung ist
+aus den unten genannten Quellen zusammengetragen.
+
+**Belastbarkeit** – jede Angabe trägt eine Kennung:
+
+| Kennung | Bedeutung |
+|---|---|
+| **[HW]** | von Dritten an echter Hardware bestätigt |
+| **[DLL]** | aus dem Verhalten der Microchip-DLL `PICkitS.dll` abgeleitet (die Original-Software arbeitet so) |
+| **[ANNAHME]** | eigene Deutung, an Hardware zu prüfen |
+
+## Gerät
+
+- USB-HID-Gerät, VID `0x04D8`, PID `0x0A04` **[HW]**. Der PICkit Serial
+  Analyzer (DV164122, PID `0x0036`) nutzt dieselbe Firmware-Basis **[DLL]**.
+- Kein Treiber nötig (HID-Klasse). Unter Linux `hidraw`, dafür die udev-Regel
+  aus `udev/` installieren.
+- Mikrocontroller PIC18F2450 (Schaltplan im User's Guide DS51675B), Firmware
+  ist die des PICkit Serial Analyzer (DS51647, Kapitel 9).
+- VBAT am LIN-Stecker muss versorgt sein (Bench-Aufbau: 12 V) **[HW]**.
+- Reports: 64 Byte Nutzdaten, Report-ID 0 **[DLL]**.
+
+## Ausgehende Reports (Host → Gerät)
+
+Byte 0 = Befehl, Rest mit `0x00` aufgefüllt. **[DLL]**
+
+| Byte 0 | Byte 1 … | Bedeutung |
+|---|---|---|
+| `01` | `00` | Kaltstart (vor Control-Block-Schreiben) |
+| `01` | `01` | Warmstart (übernimmt Control Block, Zeitbasis = 0) |
+| `01` | `02` | Statusanfrage → Statusreport |
+| `01` | `03` | Control Block → EEPROM |
+| `01` | `04` | EEPROM → Control Block |
+| `01` | `05` | CBUF2 leeren (flush) |
+| `01` | `06` | Kommunikations-Reset |
+| `01` | `07` | Statusfehler löschen |
+| `02` | 24 Byte | Control Block schreiben |
+| `03` | n, n Byte | Skript an CBUF1 anhängen (n ≤ 62, sonst auf mehrere Reports verteilen) |
+| `05` | n, n Byte | Daten an CBUF3 (Slave-Profil) |
+| `08`/`09`/`0A` | – | CBUF1/2/3 löschen |
+| `0B` | `AB` | „spezielle“ Statusanfrage, liefert aktuelle Pufferfüllstände |
+
+## Eingehende Reports (Gerät → Host)
+
+Folge von Gruppen `Tag [Daten]`, Ende mit `80` oder Füllbytes. **[DLL]**
+
+| Tag | Länge | Inhalt |
+|---|---|---|
+| `80` | 0 | Ende |
+| `81` | 2 | Firmwareversion, Little Endian |
+| `82` | 24 | Control Block |
+| `83` | 20 | Status Block |
+| `84` | 6 | Füllstände: CBUF1 belegt/frei, CBUF2 belegt/frei, CBUF3 belegt/frei (Reihenfolge belegt/frei **[ANNAHME]**, CBUF1-frei an Index 1 und CBUF3 an 4/5 **[DLL]**) |
+| `85` | 1+n | CBUF1-Daten (Länge + Daten) |
+| `86` | 1+n | CBUF2-Daten = Ereignisstrom, siehe unten |
+| `87` | 1+n | CBUF3-Daten |
+| `88` | 1 | Paketzähler |
+
+Ein Statusreport enthält `88 81 82 83 84 80`. Die DLL wartet auf Gruppe `84`
+als Abschluss der Statusantwort.
+
+## Control Block (24 Byte)
+
+| Offset | Bedeutung |
+|---|---|
+| 0 | Bit 7 Flush nach Zeit, Bit 6 Flush nach Byteanzahl, Bit 5 Busy-LED manuell **[DLL]** |
+| 3 | Flush-Byteanzahl (LIN-Standard `0x35`) **[DLL]** |
+| 4 | Flush-Intervall in 0,409 ms (LIN-Standard `0x7C` ≈ 50,7 ms) **[DLL]** |
+| 8 | Kommunikationsmodus, LIN = `0x0A` **[DLL]** |
+| 16 | LIN-Optionen: Bit 7 Autobaud, Bit 6 Empfang ein, Bit 5 Slave-Profil aktiv, Bit 3 Transceiver-CS high **[DLL]** |
+| 22/23 | BRG Low/High, Baudrate = 20 MHz / (4 · (BRG + 1)) **[DLL]** |
+
+Werkseinstellung LIN mit Autobaud **[DLL]**:
+
+```
+C0 00 00 35 7C 00 00 00 0A 33 20 00 00 00 00 00 C8 98 0F 00 00 00 F3 01
+```
+
+Ohne Autobaud ist Offset 16 `0x48`. Die Bytes 9, 10, 17, 18 sind in ihrer
+Bedeutung unbekannt und werden unverändert übernommen.
+
+Ablauf beim Umschalten auf LIN **[DLL]**: Kaltstart → Control Block →
+Warmstart → Statusanfrage, die 24 Byte des Echos müssen gleich sein.
+Spätere Änderungen (Baudrate, Optionen): Control Block → Fehler löschen →
+Statusanfrage und vergleichen.
+
+## Status Block (20 Byte)
+
+| Offset | Bedeutung |
+|---|---|
+| 0, 4, 12 | Fehlerbytes; ungleich 0 = Fehler **[DLL]** |
+| 5 | Bit 0: Kommunikation aktiv **[DLL]** |
+| 6 | aktiver Kommunikationsmodus **[DLL]** |
+| 18/19 | aktive BRG (bei Autobaud gemessen) **[DLL]** |
+
+## Skriptbefehle (CBUF1) im LIN-Modus
+
+| Befehl | Argumente | Wirkung |
+|---|---|---|
+| `84` | n, PID, n−1 Byte | Break + Sync + PID + Bytes senden **[HW]**. Die PID wird mit Paritätsbits übergeben, die Prüfsumme hängt der Host als letztes Byte an **[HW]**. n−1 ≤ 9. n = 1 sendet nur den Header (Master Request) **[DLL]** |
+| `86` | PID, n, n Byte | Eintrag im Slave-Profil schreiben **[DLL]** |
+| `87` | PID | Eintrag lesen → Ereignis `88` **[DLL]** |
+| `1F` | Wert | Marker, kommt als Ereignis `1C Wert` zurück; `77` = Skript fertig **[DLL]** |
+| `20` | – | Ereigniszeit auf 0 **[DLL]** |
+| `12`/`13` | Wert | LED 1/2 **[DLL]** |
+
+Beispiel (ID `0x0C`, 8 Byte, enhanced) **[HW]**:
+
+```
+03 0E 84 0A 4C 11 04 00 00 00 00 C0 00 DD 1F 77
+```
+
+Vor dem Schreiben prüft die DLL per `0B AB`, ob CBUF1 genug freie Bytes hat.
+
+## Ereignisstrom (CBUF2)
+
+| Tag | Argumente | Bedeutung |
+|---|---|---|
+| `10` | 1 | Datenbyte am Bus (PID, Daten, Prüfsumme) **[DLL]** |
+| `11` | n + n | mehrere Datenbytes **[DLL]** |
+| `12` | 1 | Makro-Schleife |
+| `13` | 2 | Zeitstempel, Little Endian, × 0,409 ms **[DLL]** |
+| `14` | – | Überlauf Zeitstempel (+26,8 s) **[DLL]** |
+| `15` | 2 | Makro fertig |
+| `16`–`19`, `1B` | – | Makro-Überlauf/-Abbruch, Timeouts, Skriptende |
+| `1A` | 1 | Statusfehler |
+| `1C` | 1 | Marker (siehe `1F`) |
+| `80`/`81` | 1 | Byte empfangen/gesendet (USART-Ebene) |
+| `82` | 1 | LIN-Statusfehler, beendet den Frame **[DLL]** |
+| `83` | – | Break empfangen = Frame-Beginn **[DLL]** |
+| `84` | – | Break gesendet |
+| `85` | 2 | Autobaud: gemessene BRG **[DLL]** |
+| `86` | 1 | Prüfsummenfehler |
+| `87` | 1 | ID-Paritätsfehler |
+| `88` | PID, n, n Byte | Slave-Profil-Daten (Antwort auf Skript `87`) **[DLL]** |
+
+Frame-Aufbau wie in der DLL: Break `83` startet einen Frame, der folgende
+Zeitstempel gehört zu ihm, das erste `10`-Byte ist die PID, die weiteren
+sind Daten mit der Prüfsumme als letztem Byte. Der Frame endet mit dem
+nächsten Break, nach 9 Bytes, bei `82` oder nach einer Pause (DLL: 100 ms).
+Das Sync-Byte `0x55` erscheint nicht im Strom **[DLL]**; ob das für alle
+Firmwarestände gilt, ist an Hardware zu prüfen **[ANNAHME]**.
+
+Ob eigene Sendungen vor dem Echo ein `84` (Break gesendet) liefern und
+`LinFrame.transmitted` damit zuverlässig ist, ist nicht bestätigt **[ANNAHME]**.
+
+## Offene Punkte für den ersten Hardwaretest
+
+1. Statusantwort und Firmwareversion lesen (`apglin info`).
+2. `configure_lin` mit Echo-Vergleich.
+3. Senden (`apglin send 0x0C 11 04 00 00 00 00 C0 00`) gegen einen zweiten
+   LIN-Knoten oder Logikanalysator prüfen.
+4. Empfang (`apglin monitor --raw`): kommt das Sync-Byte? kommt `84` vor dem
+   Echo? Zeitstempelauflösung 409 µs oder 409,6 µs?
+5. Master Request (`apglin request`) mit echtem Slave.
+6. Format eines kompletten Slave-Profils für CBUF3 (`load_slave_profile`).
+
+## Quellen
+
+- Microchip, *LIN Serial Analyzer User's Guide*, DS51675B (2008).
+- Microchip, *PICkit Serial Analyzer User's Guide*, DS51647 (Firmware, Kapitel 9).
+- Microchip, *PICkit Serial DLL (PICkitS.dll) Function Prototypes* v2.4.
+- Microchip, TB3180 *LIN Analyzer Library Demo* (Java-API, Quellcode nur auf Anfrage).
+- Dekompilierte C#-Quelle der PICkitS.dll: github.com/claydonkey/PicKitS
+  (keine Lizenz angegeben; nur zum Verständnis des Protokolls gelesen, kein Code übernommen).
+- Hardware-Mitschnitte mit APGDT001 bei 19200 Bd: github.com/lakewoodphone/xiao-lin-bench
+  (`BENCH_EVIDENCE.md`, `tools/send-apg-lin-frame.ps1`).

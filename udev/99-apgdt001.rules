@@ -1,0 +1,4 @@
+# Microchip APGDT001 LIN Serial Analyzer und PICkit Serial Analyzer:
+# hidraw-Zugriff für angemeldete Benutzer und die Gruppe plugdev.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="0a04", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="0036", MODE="0660", GROUP="plugdev", TAG+="uaccess"

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apglin"
+version = "0.1.0"
+description = "Python-Bibliothek für den Microchip APGDT001 LIN Serial Analyzer"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["hidapi>=0.14"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+apglin = "apglin.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
