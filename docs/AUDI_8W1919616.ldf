@@ -1,0 +1,149 @@
+/*
+ * Audi 8W1 919 616, Bedienteil Radio (Dreh-Drück-Knopf, Kippen, Beleuchtung)
+ *
+ * Nicht von Audi: aus Messungen am 30.10.2026 mit apglin und einem APGDT001
+ * als Master rekonstruiert, siehe docs/AUDI_8W1919616.md. Namen frei gewählt.
+ *
+ * Gemessen: Baudrate, Frame-IDs, Längen, Prüfsummen (enhanced), Signallage,
+ * Response_Error, NAD und Product ID (Read by Identifier).
+ * Angenommen (LIN-2.1-Standardwerte, nicht gemessen): P2_min, ST_min,
+ * N_As_timeout, N_Cr_timeout, Zeitbasis, Jitter, Zykluszeiten und
+ * Startwerte der Signale.
+ */
+
+LIN_description_file;
+LIN_protocol_version = "2.1";
+LIN_language_version = "2.1";
+LIN_speed = 19.2 kbps;
+
+Nodes {
+  Master: Master, 5 ms, 0.1 ms;
+  Slaves: BT;
+}
+
+Signals {
+  /* Master -> BT */
+  BT_Beleuchtung: 8, 0, Master, BT;
+
+  /* BT -> Master */
+  BT_Drehung: 8, 0, BT, Master;
+  BT_Taste_gedrueckt: 1, 0, BT, Master;
+  BT_Kippen_links: 1, 0, BT, Master;
+  BT_Kippen_rechts: 1, 0, BT, Master;
+  BT_Response_Error: 1, 0, BT, Master;
+}
+
+Diagnostic_signals {
+  MasterReqB0: 8, 0;
+  MasterReqB1: 8, 0;
+  MasterReqB2: 8, 0;
+  MasterReqB3: 8, 0;
+  MasterReqB4: 8, 0;
+  MasterReqB5: 8, 0;
+  MasterReqB6: 8, 0;
+  MasterReqB7: 8, 0;
+  SlaveRespB0: 8, 0;
+  SlaveRespB1: 8, 0;
+  SlaveRespB2: 8, 0;
+  SlaveRespB3: 8, 0;
+  SlaveRespB4: 8, 0;
+  SlaveRespB5: 8, 0;
+  SlaveRespB6: 8, 0;
+  SlaveRespB7: 8, 0;
+}
+
+Frames {
+  /* Helligkeit der Tastenbeleuchtung; das BT behält den letzten Wert */
+  BT_Beleuchtung_Frame: 0x01, Master, 1 {
+    BT_Beleuchtung, 0;
+  }
+  /* Drehung und Tasten; Byte 1 Bit 1 und Bit 5-7 nie gesehen */
+  BT_Status: 0x10, BT, 2 {
+    BT_Drehung, 0;
+    BT_Taste_gedrueckt, 8;
+    BT_Kippen_links, 10;
+    BT_Kippen_rechts, 11;
+    BT_Response_Error, 12;
+  }
+}
+
+Diagnostic_frames {
+  MasterReq: 0x3C {
+    MasterReqB0, 0;
+    MasterReqB1, 8;
+    MasterReqB2, 16;
+    MasterReqB3, 24;
+    MasterReqB4, 32;
+    MasterReqB5, 40;
+    MasterReqB6, 48;
+    MasterReqB7, 56;
+  }
+  SlaveResp: 0x3D {
+    SlaveRespB0, 0;
+    SlaveRespB1, 8;
+    SlaveRespB2, 16;
+    SlaveRespB3, 24;
+    SlaveRespB4, 32;
+    SlaveRespB5, 40;
+    SlaveRespB6, 48;
+    SlaveRespB7, 56;
+  }
+}
+
+Node_attributes {
+  BT {
+    LIN_protocol = "2.1";
+    configured_NAD = 0x40;
+    initial_NAD = 0x40;
+    /* Read by Identifier 0: Supplier 0x0049, Function 0x3001, Variant 0x00 */
+    product_id = 0x0049, 0x3001, 0x00;
+    response_error = BT_Response_Error;
+    P2_min = 50 ms;
+    ST_min = 0 ms;
+    N_As_timeout = 1000 ms;
+    N_Cr_timeout = 1000 ms;
+    configurable_frames {
+      BT_Beleuchtung_Frame;
+      BT_Status;
+    }
+  }
+}
+
+Schedule_tables {
+  /* gemessen funktionierend: 0x10 etwa alle 30 ms; 0x01 nur bei Änderung nötig */
+  Normal {
+    BT_Beleuchtung_Frame delay 10 ms;
+    BT_Status delay 20 ms;
+  }
+  Diagnose {
+    MasterReq delay 20 ms;
+    SlaveResp delay 20 ms;
+  }
+}
+
+Signal_encoding_types {
+  Enc_Helligkeit {
+    physical_value, 0, 100, 1, 0, "%";
+    physical_value, 101, 255, 0, 100, "%";
+  }
+  Enc_Drehung {
+    logical_value, 0, "keine Drehung";
+    physical_value, 1, 127, 1, 0, "Rasten";
+    physical_value, 128, 255, 1, -256, "Rasten";
+  }
+  Enc_Taste {
+    logical_value, 0, "nicht betaetigt";
+    logical_value, 1, "betaetigt";
+  }
+  Enc_Response_Error {
+    logical_value, 0, "kein Fehler";
+    logical_value, 1, "fehlerhaften Frame empfangen";
+  }
+}
+
+Signal_representation {
+  Enc_Helligkeit: BT_Beleuchtung;
+  Enc_Drehung: BT_Drehung;
+  Enc_Taste: BT_Taste_gedrueckt, BT_Kippen_links, BT_Kippen_rechts;
+  Enc_Response_Error: BT_Response_Error;
+}
