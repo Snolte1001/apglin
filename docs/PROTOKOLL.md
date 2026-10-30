@@ -211,6 +211,17 @@ nächsten; nach 5 s Pause bleibt der erste Header regelmäßig ohne Antwort,
 nach 3 s nicht. `request(..., retries=n)` wiederholt den Header deshalb,
 `apglin request` standardmäßig einmal.
 
+Header nicht zu dicht senden **[HW]**: Bei Abfrage im festen Takt (20 ms,
+Windows) holte die Schleife verspätete Abfragen nach, zwei Skripte landeten
+zugleich in CBUF1 und das Gerät sendete den zweiten Header unmittelbar nach
+der PID des ersten (1,7 ms Abstand). Folge: Der erste Frame bleibt ohne
+Antwort, oder Antwort und nächster Header überlagern sich; dann fehlt der
+Break `83`, Sync `55` und PID erscheinen als Datenbytes, und es entstehen
+Frames wie `00 00 2F 55 50 00 00` mit falscher Prüfsumme (8 von 500 Frames).
+Abhilfe: `send_header(..., wait=True)` und danach eine feste Pause, nie
+nachholen; damit 31 318 Frames ohne Fehler. Die Firmware wartet also nicht
+auf das Ende der Slave-Antwort, bevor sie das nächste Skript ausführt.
+
 Antworten Slave und eigenes Slave-Profil auf denselben Header, meldet das
 Gerät einen Tick nach der PID einen Break `83`, keine Datenbytes, kein
 Fehlerereignis und keine Fehlerbits im Status Block **[HW]**.
@@ -311,6 +322,9 @@ Erledigt (30.10.2026, gleiches Gerät, ein fremder Slave am Bus, Master-Pull-up)
   erste weckte den Slave. Aufwachverhalten, `retries`, Autobaud und
   Kollision mit dem eigenen Profil siehe oben.
 - Mitschnitte `tests/recordings/slave_*.txt`.
+- Der Slave ist ein Audi-Bedienteil 8W1 919 616; Belegung seines Frames in
+  [AUDI_8W1919616.md](AUDI_8W1919616.md), 31 318 Frames mit 30 ms Abstand
+  ohne Fehler.
 
 Offen (braucht weitere Hardware oder Angaben zum Slave):
 

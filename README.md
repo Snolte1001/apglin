@@ -103,6 +103,15 @@ lin.configure_lin(19200)
 print(lin.request(0x21))
 ```
 
+Ein vollständiges Beispiel mit echtem Slave (Audi-Bedienteil
+8W1 919 616, Drehen/Drücken/Kippen):
+[`examples/audi_8w1919616.py`](examples/audi_8w1919616.py), Belegung in
+[docs/AUDI_8W1919616.md](docs/AUDI_8W1919616.md).
+
+Mehrere Header hintereinander: jeweils `send_header(..., wait=True)` und
+eine Pause, nie nachholen, sonst überschreibt der nächste Header die
+Slave-Antwort.
+
 ## Kommandozeile
 
 ```bash
