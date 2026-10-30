@@ -24,6 +24,17 @@ def test_lin_send_matches_dll_layout():
     assert report[5 + len(payload):7 + len(payload)] == b"\x1f\x77"
 
 
+def test_slave_profile_entry_layout():
+    # Format des Slave-Fensters der Microchip-GUI, an Firmware 0x2304 bestätigt
+    assert protocol.slave_profile_entry(0x61, b"\x01\x02\x03\x98") == bytes.fromhex("d4 61 01 02 03 98")
+    assert protocol.slave_profile_entry(0x61, b"\x01\x02\x03", device_checksum=True) == bytes.fromhex("93 61 01 02 03")
+    assert protocol.slave_profile_entry(0x61, bytes(9))[0] == 0xD9
+    with pytest.raises(ValueError):
+        protocol.slave_profile_entry(0x61, bytes(10))
+    with pytest.raises(ValueError):
+        protocol.slave_profile_entry(0x61, bytes(9), device_checksum=True)
+
+
 def test_header_only():
     assert protocol.script_lin_send(0x4C, b"") == bytes([0x84, 1, 0x4C])
 

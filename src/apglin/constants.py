@@ -85,6 +85,17 @@ class Script(IntEnum):
     LIN_READ_SLAVE_PROFILE = 0x87    # + PID
 
 
+# --- Slave-Profil (Inhalt von CBUF3) ---------------------------------------
+# Je Eintrag: Kopfbyte, PID, Bytes. Format aus der Microchip-GUI (Slave-
+# Fenster), Wirkung an Firmware 0x2304 gemessen.
+
+SLAVE_ENTRY_MARK = 0x80          # muss gesetzt sein
+SLAVE_ENTRY_ACTIVE = 0x10        # muss gesetzt sein, sonst keine Antwort
+SLAVE_ENTRY_ENHANCED = 0x20      # GUI „enhanced“, bei 0x2304 ohne Wirkung (immer classic)
+SLAVE_ENTRY_RAW = 0x40           # GUI „forced“: keine Prüfsumme vom Gerät, Bytes unverändert
+SLAVE_ENTRY_COUNT = 0x0F         # Anzahl der Bytes nach der PID
+SLAVE_ENTRY_MAX_BYTES = 9
+
 MARKER_SCRIPT_DONE = 0x77
 MAX_SCRIPT_CHUNK = 62                # Nutzbytes je Report bei WRITE_CBUF1/3
 MAX_LIN_PAYLOAD = 9                  # Datenbytes + Prüfsumme je LIN_SEND

@@ -6,7 +6,7 @@ import logging
 import queue
 import threading
 import time
-from typing import Callable, Iterator, List, Optional
+from typing import Callable, Iterator, List, Mapping, Optional
 
 from . import constants as c
 from . import protocol
@@ -517,13 +517,38 @@ class LinAnalyzer:
         except ValueError:
             pass
 
-    # --- Slave-Profil (experimentell) ---------------------------------------
+    # --- Slave-Profil -------------------------------------------------------
+
+    def set_slave_responses(self, responses: Mapping[int, bytes],
+                            checksum: ChecksumType = ChecksumType.AUTO) -> DeviceStatus:
+        """Das Gerät antwortet als Slave auf Header der IDs in ``responses``.
+
+        ``responses`` bildet Frame-ID → Daten (ohne Prüfsumme) ab. Die
+        Prüfsumme rechnet der Host, weil die Firmware selbst nur classic
+        kann. Das Gerät beantwortet auch seine eigenen Header
+        (``request``). Ein Warmstart (auch ``configure_lin``) löscht das
+        Profil; höchstens 40 Byte, also vier Einträge mit 8 Datenbytes.
+        """
+        raw = b""
+        for frame_id, data in responses.items():
+            data = bytes(data)
+            if len(data) > 8:
+                raise ValueError("Höchstens 8 Datenbytes")
+            payload = data + bytes([frame_checksum(frame_id, data, checksum)])
+            raw += protocol.slave_profile_entry(protected_id(frame_id), payload)
+        return self.load_slave_profile(raw)
 
     def write_slave_profile_entry(self, pid: int, data: bytes) -> None:
-        """Legt die Antwort für ``pid`` im Slave-Profil ab (experimentell)."""
+        """Überschreibt die Bytes eines vorhandenen Eintrags (Schlüssel: PID).
+
+        Die Länge des Eintrags bleibt, überzählige Bytes fallen weg; bei
+        Einträgen ohne Geräteprüfsumme ist das letzte Byte die Prüfsumme.
+        Eine PID ohne Eintrag legt nichts an. Gerätebefehl, keine Rückmeldung.
+        """
         self._run_script(protocol.script_lin_write_slave_profile(pid, data), False, None)
 
     def read_slave_profile_entry(self, pid: int, timeout: Optional[float] = None) -> bytes:
+        """Gespeicherte Bytes für ``pid`` (leer, wenn es keinen Eintrag gibt)."""
         timeout = self.response_timeout if timeout is None else timeout
         with self._profile_cond:
             self._profiles.pop(pid & 0xFF, None)
@@ -540,8 +565,8 @@ class LinAnalyzer:
             return self._profiles.pop(pid & 0xFF)
 
     def load_slave_profile(self, raw: bytes) -> DeviceStatus:
-        """Lädt ein komplettes Slave-Profil (Rohformat der Microchip-Software)
-        in Puffer 3 und schaltet Slave-Antworten ein (experimentell)."""
+        """Lädt ein komplettes Slave-Profil in Puffer 3 und schaltet
+        Slave-Antworten ein. Format siehe ``protocol.slave_profile_entry``."""
         status = self._request(protocol.special_status_request(), None)
         capacity = (status.buffers.cbuf3_used + status.buffers.cbuf3_free) if status.buffers else 0
         if len(raw) > capacity:

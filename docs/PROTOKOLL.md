@@ -13,9 +13,10 @@ hier beschriebenen Bytefolgen überein.
 
 | Kennung | Bedeutung |
 |---|---|
-| **[HW]** | von Dritten an echter Hardware bestätigt |
+| **[HW]** | an echter Hardware bestätigt (eigene Tests mit Firmware `0x2304` oder Mitschnitte Dritter) |
 | **[DLL]** | übereinstimmend aus `PICkitS.dll` und `LINdllResource.jar` abgeleitet (die Original-Software arbeitet so) |
 | **[UG]** | steht im LIN Serial Analyzer User's Guide DS51675B |
+| **[GUI]** | aus dekompiliertem Code der Microchip-GUI (.NET) abgelesen |
 | **[ANNAHME]** | eigene Deutung, an Hardware zu prüfen |
 
 ## Gerät
@@ -53,13 +54,16 @@ Byte 0 = Befehl, Rest mit `0x00` aufgefüllt. **[DLL]**
 | `01` | `07` | Statusfehler löschen |
 | `02` | 24 Byte | Control Block schreiben |
 | `03` | n, n Byte | Skript an CBUF1 anhängen (n ≤ 62, sonst auf mehrere Reports verteilen) |
-| `05` | n, n Byte | Daten an CBUF3 (Slave-Profil) |
+| `05` | n, n Byte | Daten an CBUF3 (Slave-Profil, siehe unten) **[HW]** |
 | `08`/`09`/`0A` | – | CBUF1/2/3 löschen |
 | `0B` | `AB` | „spezielle“ Statusanfrage, liefert aktuelle Pufferfüllstände |
 
 ## Eingehende Reports (Gerät → Host)
 
 Folge von Gruppen `Tag [Daten]`, Ende mit `80` oder Füllbytes. **[DLL]**
+Hinter dem `80` stehen oft Reste früherer Reports (z. B. Teile eines
+Control Blocks); sie sind bedeutungslos, die Auswertung muss beim `80`
+enden **[HW]**.
 
 | Tag | Länge | Inhalt |
 |---|---|---|
@@ -125,8 +129,8 @@ Statusanfrage und vergleichen.
 | Befehl | Argumente | Wirkung |
 |---|---|---|
 | `84` | n, PID, n−1 Byte | Break + Sync + PID + Bytes senden **[HW]**. Die PID wird mit Paritätsbits übergeben, die Prüfsumme hängt der Host als letztes Byte an **[HW]** (auch die Microchip-Demo rechnet PID und Prüfsumme selbst). n−1 ≤ 9. n = 1 sendet nur den Header (Master Request) **[DLL]** |
-| `86` | PID, n, n Byte | Eintrag im Slave-Profil schreiben **[DLL]** |
-| `87` | PID | Eintrag lesen → Ereignis `88` **[DLL]** |
+| `86` | PID, n, n Byte | vorhandenen Eintrag im Slave-Profil überschreiben **[HW]**, siehe unten |
+| `87` | PID | Eintrag lesen → Ereignis `88` **[HW]** |
 | `1F` | Wert | Marker, kommt als Ereignis `1C Wert` zurück; `77` = Skript fertig **[DLL]** |
 | `20` | – | Ereigniszeit auf 0 **[DLL]** |
 | `12`/`13` | Wert | LED 1/2 **[DLL]** |
@@ -159,7 +163,7 @@ Vor dem Schreiben prüft die DLL per `0B AB`, ob CBUF1 genug freie Bytes hat.
 | `85` | 2 | Autobaud: gemessene BRG **[DLL]** |
 | `86` | 1 | Prüfsummenfehler |
 | `87` | 1 | ID-Paritätsfehler |
-| `88` | PID, n, n Byte | Slave-Profil-Daten (Antwort auf Skript `87`) **[DLL]** |
+| `88` | PID, n, n Byte | Slave-Profil-Daten (Antwort auf Skript `87`), n = 0 ohne Eintrag **[HW]** |
 
 Frame-Aufbau wie in der DLL: Break `83` startet einen Frame, der folgende
 Zeitstempel gehört zu ihm, das erste `10`-Byte ist die PID, die weiteren
@@ -192,10 +196,68 @@ Beobachtet: erster Frame bei 107,2 s = 4 × 26,8 s statt 0,02 s **[HW]**.
 `apglin` leert deshalb nach dem Warmstart CBUF2 (`09`) und verwirft alle
 Ereignisse bis zur nächsten Statusantwort.
 
+Autobaud über die Loopback-Strecke **[HW]**: Mit Bit 7 in Offset 16 sendet
+das Gerät weiter mit der BRG aus dem Control Block (9600 und 19200 Bd
+geprüft). Eigene Frames lösen keine Messung aus: kein Ereignis `85`, die BRG
+im Status Block bleibt unverändert. Ob ein fremder Master gemessen wird,
+ist nicht geprüft.
+
 Fehlerarten der Microchip-Software **[UG]**: Parität, Prüfsumme, „No Answer“
 (Header ohne Daten innerhalb des Bus-Timeouts) und Bus-Timeout. TX-Bit-,
 Framing-, Break- und SWBreak-Fehler sind laut User's Guide nicht
 implementiert.
+
+## Slave-Profil (CBUF3)
+
+Mit Bit 5 in Offset 16 antwortet das Gerät als Slave auf Header, deren PID
+im Profil steht **[DLL] [HW]**. Es beantwortet dabei auch die Header, die es
+selbst als Master sendet; Master Request und Slave-Antwort lassen sich so
+ohne zweiten Knoten prüfen **[HW]**. Die Antwort erscheint als normaler
+Frame (PID, Daten, Prüfsumme) im Ereignisstrom.
+
+Laden wie in der DLL (`Add_LIN_Slave_Profile_To_PKS`): CBUF3 löschen (`0A`),
+Control Block mit Bit 5, Daten mit `05` schreiben, Statusanfrage
+**[DLL] [HW]**. CBUF3 fasst 40 Byte **[HW]**. Ein Warmstart löscht CBUF3 und
+damit das Profil, das Bit 5 bleibt stehen **[HW]**.
+
+Die DLL reicht das Profil nur als Byte-Array durch. Das Format stammt aus
+dem Slave-Fenster der Microchip-GUI **[GUI]**, die Wirkung der Bits ist an
+Firmware `0x2304` gemessen **[HW]**. Je Eintrag:
+
+```
+Kopf  PID  Byte 1 … Byte n
+```
+
+| Kopf-Bit | Bedeutung |
+|---|---|
+| 7 (`0x80`) | muss gesetzt sein **[HW]** |
+| 6 (`0x40`) | GUI „forced“: Gerät hängt keine Prüfsumme an, alle n Bytes werden unverändert gesendet, das letzte ist also die Prüfsumme **[HW]** |
+| 5 (`0x20`) | GUI „enhanced“: **ohne Wirkung**, das Gerät rechnet immer classic **[HW]** |
+| 4 (`0x10`) | muss gesetzt sein; ohne Bit 4 (oder ohne Bit 7) keine Antwort **[HW]** |
+| 3–0 | n, Anzahl der Bytes nach der PID **[HW]** |
+
+Ohne Bit 6 sendet das Gerät die n Bytes und eine selbst gerechnete
+classic-Prüfsumme (n = 0 ergibt nur die Prüfsumme `FF`). Enhanced geht also
+nur mit Bit 6 und vom Host gerechneter Prüfsumme, so macht es `apglin`
+(`set_slave_responses`). Getestet: n = 0 … 9, bis zu vier Einträge,
+Einträge ohne Abschlussbyte (die GUI hängt ein `00` an, nötig ist es nicht)
+**[HW]**.
+
+Beispiel (ID `0x21` → `01 02 03` mit classic-Prüfsumme vom Gerät;
+ID `0x22` → `11 22` mit enhanced-Prüfsumme `E9` vom Host) **[HW]**:
+
+```
+93 61 01 02 03   D3 E2 11 22 E9
+```
+
+Skript `87 PID` liefert `88 PID n Bytes` mit den gespeicherten Bytes (bei
+Bit 6 einschließlich Prüfsumme); Schlüssel ist die PID, nicht die Frame-ID.
+Ohne Eintrag kommt `88 PID 00` **[HW]**. Skript `86 PID n Bytes` überschreibt
+die Bytes eines vorhandenen Eintrags an Ort und Stelle: Länge und Kopf
+bleiben, überzählige Bytes fallen weg, bei Bit 6 wird so auch die
+Prüfsumme überschrieben. Für eine PID ohne Eintrag legt `86` nichts an
+**[HW]**. Die DLL (`Write_Slave_Profile`) liest nach dem Schreiben per `87`
+zurück und vergleicht.
 
 ## Hardwaretests
 
@@ -215,12 +277,28 @@ Erledigt (30.10.2026, APGDT001, Firmware `0x2304`, Windows):
 - Nach Pause im LIN-Modus beginnt die Zeit wieder bei ~0,02 s (alte
   Ereignisse verworfen), eigene Frames als `TX` erkannt.
 
-Offen:
+Erledigt (30.10.2026, gleiches Gerät, nur VBAT, kein weiterer Knoten):
 
-1. Senden gegen einen zweiten LIN-Knoten oder Logikanalysator prüfen.
-2. Master Request mit echtem Slave.
+- Slave-Profil: Format und Kopfbits (siehe oben), Antwort auf eigene Header
+  mit 0–9 Bytes, enhanced und classic, mehrere Einträge, 40-Byte-Grenze,
+  Skript `86`/`87`, Warmstart löscht das Profil.
+- Master Request mit Antwort aus dem eigenen Slave-Profil: `request()`
+  liefert Daten und Prüfsumme, Frame als `RX` gekennzeichnet.
+- Autobaud über Loopback: keine Messung bei eigenen Frames (siehe oben).
+- Mitschnitte als Regressionstests: `tests/recordings/*.txt`, aufgenommen
+  mit `tests/hw_scenarios.py`, abgespielt von `tests/test_recordings.py`
+  (prüft jeden geschriebenen Report gegen die Aufnahme).
+
+Offen (braucht weitere Hardware):
+
+1. Senden gegen einen zweiten LIN-Knoten oder Logikanalysator prüfen
+   (Pegel, Break-Länge, Timing außerhalb der Loopback-Strecke).
+2. Master Request mit fremdem Slave (Antwort über den Bus statt aus dem
+   eigenen Profil).
 3. Autobaud und Mitschnitt mit fremdem Master (`monitor --autobaud`).
-4. Format eines kompletten Slave-Profils für CBUF3 (`load_slave_profile`).
+4. Slave-Profil gegen fremden Master; ob Bit 5 „enhanced“ bei anderer
+   Firmware wirkt.
+5. Linux (hidraw, udev-Regel).
 
 ## Quellen
 
@@ -233,5 +311,8 @@ Offen:
   Microchip-Lizenz nur mit Microchip-Produkten nutzbar, kein Code übernommen).
 - Dekompilierte C#-Quelle der PICkitS.dll: github.com/claydonkey/PicKitS
   (keine Lizenz angegeben; nur zum Verständnis des Protokolls gelesen, kein Code übernommen).
+- Offenbar dekompilierte Microchip-GUI (Slave-Fenster, `Slave.cs`):
+  github.com/hebelmx/CanFdLinBus, `src/Microchip/Slave.cs` (nur zum
+  Verständnis des Profilformats gelesen, kein Code übernommen).
 - Hardware-Mitschnitte mit APGDT001 bei 19200 Bd: github.com/lakewoodphone/xiao-lin-bench
   (`BENCH_EVIDENCE.md`, `tools/send-apg-lin-frame.ps1`).

@@ -8,9 +8,10 @@ von Microchip. Läuft unter Linux und Windows.
 > PICkitS-DLL, der Microchip-Java-Bibliothek (TB3180) und
 > Hardware-Mitschnitten Dritter rekonstruiert. **An einem APGDT001
 > (Firmware `0x2304`, Windows) getestet:** Status, Konfiguration, Senden
-> mit Loopback-Echo, Master Request ohne Slave, 9600/19200 Bd.
-> **Noch nicht getestet:** Betrieb mit echten LIN-Teilnehmern (Slave-Antworten,
-> fremder Master, Autobaud), Slave-Profil, Linux.
+> mit Loopback-Echo, Master Request mit und ohne Antwort, Slave-Profil
+> (Gerät antwortet auch auf eigene Header), 9600/19200 Bd.
+> **Noch nicht getestet:** Betrieb mit fremden LIN-Teilnehmern (Slave,
+> Master, Autobaud-Messung), Linux.
 > Details: [docs/PROTOKOLL.md](docs/PROTOKOLL.md).
 
 ## Gerät
@@ -19,7 +20,7 @@ von Microchip. Läuft unter Linux und Windows.
 |---|---|
 | USB | HID, VID `04D8`, PID `0A04` |
 | Firmware-Basis | PICkit Serial Analyzer (PIC18F2450), Transceiver MCP2021 |
-| LIN | Master senden, Master Request, Mitschneiden, Autobaud, Slave-Profil |
+| LIN | Master senden, Master Request, Mitschneiden, Autobaud, Slave-Antworten |
 | Baudrate | 20 MHz / (4 · (BRG + 1)), z. B. 19200 → 19231 Bd |
 | Versorgung | VBAT 8–30 V (nominal 12–14,4 V) an Klemme oder Hohlstecker, sonst kein LIN |
 | Master/Slave | Jumper E1 innen: gesteckt = Master-Pull-up 1 kΩ (Auslieferung) |
@@ -62,6 +63,16 @@ with LinAnalyzer.open() as lin:
     # Bus mitschneiden
     for frame in lin.frames(timeout=5.0):
         print(frame)
+```
+
+Das Gerät als Slave (beantwortet auch die eigenen Header, Test ohne
+zweiten Knoten möglich; ein Warmstart bzw. `configure_lin` löscht das
+Profil, höchstens vier Einträge mit 8 Byte):
+
+```python
+lin.set_slave_responses({0x21: b"", 0x22: b"""})
+print(lin.request(0x21))    # RX ID=0x21 ... 01 02 03 chk=98 enhanced
+lin.enable_slave_profile(False)
 ```
 
 Callback statt Warteschlange (läuft im Lesethread, nicht blockieren):
@@ -124,6 +135,7 @@ apglin request 0x21
 | `lin.py` | PID, Prüfsummen, Baudrate ↔ BRG |
 | `transport.py` | HID-Zugriff (`hidapi`), austauschbar |
 | `simulator.py` | simuliertes Gerät für Tests |
+| `recording.py` | USB-Verkehr mitschneiden und wiedergeben |
 
 ## Tests
 
@@ -133,4 +145,12 @@ pip install -e .[test]
 
 ```bash
 pytest
+```
+
+`tests/test_recordings.py` spielt Mitschnitte vom echten Gerät ab
+(`tests/recordings/`) und prüft jeden Report, den die Bibliothek schreibt,
+gegen die Aufnahme. Neu aufnehmen mit angeschlossenem Gerät:
+
+```bash
+python tests/hw_scenarios.py
 ```

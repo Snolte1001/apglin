@@ -81,6 +81,23 @@ def script_lin_read_slave_profile(pid: int) -> bytes:
     return bytes([c.Script.LIN_READ_SLAVE_PROFILE, pid & 0xFF])
 
 
+def slave_profile_entry(pid: int, payload: bytes, *, device_checksum: bool = False) -> bytes:
+    """Ein Eintrag des Slave-Profils (CBUF3): Antwort auf den Header ``pid``.
+
+    Standard: ``payload`` sind Daten plus Prüfsumme und werden unverändert
+    gesendet. Mit ``device_checksum`` hängt das Gerät selbst eine
+    classic-Prüfsumme an (enhanced kann Firmware 0x2304 nicht).
+    """
+    payload = bytes(payload)
+    limit = c.SLAVE_ENTRY_MAX_BYTES - (1 if device_checksum else 0)
+    if len(payload) > limit:
+        raise ValueError(f"Höchstens {limit} Byte je Eintrag")
+    head = c.SLAVE_ENTRY_MARK | c.SLAVE_ENTRY_ACTIVE | len(payload)
+    if not device_checksum:
+        head |= c.SLAVE_ENTRY_RAW
+    return bytes([head, pid & 0xFF]) + payload
+
+
 def script_led(led: int, value: int) -> bytes:
     if led not in (1, 2):
         raise ValueError("LED 1 oder 2")

@@ -7,7 +7,7 @@ Es ersetzt keinen Test an echter Hardware.
 import queue
 import threading
 import time
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from . import constants as c
 from .lin import ChecksumType, baud_to_brg, frame_checksum, frame_id_of, protected_id
@@ -28,7 +28,6 @@ class SimulatedTransport(Transport):
         self.cbuf2_size = 128
         self.cbuf3 = bytearray()
         self.cbuf3_size = 40
-        self.slave_profiles: Dict[int, bytes] = {}
         # Slave-Knoten am Bus: ID -> Antwortdaten (ohne Prüfsumme)
         self.responders: Dict[int, bytes] = {}
         self.leds = {1: 0, 2: 0}
@@ -104,6 +103,7 @@ class SimulatedTransport(Transport):
             elif sub == c.Control.WARM_RESET:
                 self._apply_control_block()
                 self._t0 = self._clock()
+                self.cbuf3.clear()   # Firmware 0x2304: Warmstart löscht das Slave-Profil
                 if self.stale_events:
                     self._emit_stream(self.stale_events)
                     self.stale_events = b""
@@ -135,9 +135,8 @@ class SimulatedTransport(Transport):
                 n = s[1]
                 pid, payload = s[2], bytes(s[3:2 + n])
                 del s[:2 + n]
-                if not payload and frame_id_of(pid) in self.responders:
-                    answer = self.responders[frame_id_of(pid)]
-                    payload = answer + bytes([frame_checksum(frame_id_of(pid), answer)])
+                if not payload:
+                    payload = self._slave_answer(pid)
                 self._bus_frame(pid, payload)
             elif op in (c.Script.MARKER, c.Script.LED1, c.Script.LED2):
                 if len(s) < 2:
@@ -153,16 +152,51 @@ class SimulatedTransport(Transport):
             elif op == c.Script.LIN_WRITE_SLAVE_PROFILE:
                 if len(s) < 3 or len(s) < 3 + s[2]:
                     return
-                self.slave_profiles[s[1]] = bytes(s[3:3 + s[2]])
+                entry = self._profile_entry(s[1])
+                if entry is not None:
+                    start, count = entry
+                    data = bytes(s[3:3 + min(s[2], count)])
+                    self.cbuf3[start:start + len(data)] = data
                 del s[:3 + s[2]]
             elif op == c.Script.LIN_READ_SLAVE_PROFILE:
                 if len(s) < 2:
                     return
-                data = self.slave_profiles.get(s[1], b"")
+                entry = self._profile_entry(s[1])
+                data = b"" if entry is None else bytes(self.cbuf3[entry[0]:entry[0] + entry[1]])
                 self._emit_stream(bytes([c.Event.LIN_SLAVE_PROFILE_DATA, s[1], len(data)]) + data)
                 del s[:2]
             else:
                 s.clear()
+
+    def _profile_entry(self, pid: int) -> Optional[Tuple[int, int]]:
+        """(Start der Bytes in CBUF3, Anzahl) des Eintrags für ``pid``."""
+        i = 0
+        while i + 1 < len(self.cbuf3):
+            head = self.cbuf3[i]
+            if not head & c.SLAVE_ENTRY_MARK:
+                return None
+            count = head & c.SLAVE_ENTRY_COUNT
+            if self.cbuf3[i + 1] == pid:
+                return i + 2, count
+            i += 2 + count
+        return None
+
+    def _slave_answer(self, pid: int) -> bytes:
+        """Antwort eines Slaves auf einen Header: Slave-Profil, sonst ``responders``."""
+        entry = self._profile_entry(pid)
+        if self.control_block[c.CB_LIN_FLAGS] & c.LIN_FLAG_SLAVE_PROFILE and entry is not None:
+            start, count = entry
+            head = self.cbuf3[start - 2]
+            if head & c.SLAVE_ENTRY_ACTIVE:
+                data = bytes(self.cbuf3[start:start + count])
+                if head & c.SLAVE_ENTRY_RAW:
+                    return data
+                return data + bytes([frame_checksum(frame_id_of(pid), data, ChecksumType.CLASSIC)])
+        frame_id = frame_id_of(pid)
+        if frame_id in self.responders:
+            answer = self.responders[frame_id]
+            return answer + bytes([frame_checksum(frame_id, answer)])
+        return b""
 
     def _bus_frame(self, pid: int, payload: bytes) -> None:
         if not self.control_block[c.CB_LIN_FLAGS] & c.LIN_FLAG_RECEIVE:

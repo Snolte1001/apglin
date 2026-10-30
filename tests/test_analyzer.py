@@ -110,10 +110,46 @@ def test_receive_disabled(lin, sim):
     assert lin.receive(timeout=0.2) is None
 
 
-def test_slave_profile_entry(lin):
+def test_slave_profile_entry_needs_loaded_profile(lin):
+    # wie Firmware 0x2304: Schreiben auf eine PID ohne Eintrag legt nichts an
     lin.configure_lin(19200)
     lin.write_slave_profile_entry(0x4C, b"\x01\x02")
-    assert lin.read_slave_profile_entry(0x4C) == b"\x01\x02"
+    assert lin.read_slave_profile_entry(0x4C) == b""
+
+
+def test_slave_profile_entry_overwrites_in_place(lin):
+    lin.configure_lin(19200)
+    lin.set_slave_responses({0x0C: b"\x01\x02"})
+    assert lin.read_slave_profile_entry(0x4C) == b"\x01\x02\xB0"
+    lin.write_slave_profile_entry(0x4C, b"\x0A\x0B\x0C\x0D")
+    assert lin.read_slave_profile_entry(0x4C) == b"\x0A\x0B\x0C"
+
+
+def test_set_slave_responses_answers_own_header(lin, sim):
+    lin.configure_lin(19200)
+    lin.set_slave_responses({0x21: b"\x01\x02\x03", 0x3C: b"\x05"})
+    frame = lin.request(0x21)
+    assert frame.data == b"\x01\x02\x03" and frame.checksum == 0x98
+    assert frame.checksum_type is ChecksumType.ENHANCED and not frame.transmitted
+    assert lin.request(0x3C).checksum_type is ChecksumType.CLASSIC
+    assert lin.request(0x22).data == b""
+    lin.enable_slave_profile(False)
+    assert lin.request(0x21).data == b""
+
+
+def test_warm_reset_clears_slave_profile(lin, sim):
+    lin.configure_lin(19200)
+    lin.set_slave_responses({0x21: b"\x01"})
+    assert lin.warm_reset().buffers.cbuf3_used == 0
+    assert lin.request(0x21).data == b""
+
+
+def test_set_slave_responses_too_long(lin):
+    lin.configure_lin(19200)
+    with pytest.raises(ValueError):
+        lin.set_slave_responses({0x21: bytes(9)})
+    with pytest.raises(ValueError):
+        lin.set_slave_responses({i: bytes(8) for i in range(5)})
 
 
 def test_load_slave_profile_too_big(lin):
